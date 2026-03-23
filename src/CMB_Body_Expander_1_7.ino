@@ -418,7 +418,7 @@ void UtilityArms() {
     Servos[BOTTOM_UTIL_ARM].detach();
 
   } else if (bottomUtilityArmOpen) { //if bottom arm is open, open top
-    DEBUG_PRINT_LN(F("Open bottom arm"));
+    DEBUG_PRINT_LN(F("Open top arm"));
     utilityArmOpen = true;
     topUtilityArmOpen = true;
 
@@ -626,6 +626,16 @@ void Scream() {
   Servos[TOP_UTIL_ARM].detach();
   Servos[BOTTOM_UTIL_ARM].detach();
 
+  doorsOpen = false;
+  leftDoorOpen = false;
+  rightDoorOpen = false;
+  cbi_dataOpen = false;
+  cbiDoorOpen = false;
+  dataDoorOpen = false;
+  utilityArmOpen = false;
+  topUtilityArmOpen = false;
+  bottomUtilityArmOpen = false;
+
   digitalWrite(STATUS_LED, LOW);
 }
 
@@ -650,6 +660,7 @@ void Doors() {
     rightDoorOpen = false;
     cbiDoorOpen = false;
     dataDoorOpen = false;
+    cbi_dataOpen = false;
 
     Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
     Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
@@ -825,6 +836,8 @@ void openCBI_DataDoor() {
   if (cbi_dataOpen) {
     DEBUG_PRINT_LN(F("Close Charge Bay & Data Door"));
     cbi_dataOpen = false;
+    cbiDoorOpen = false;
+    dataDoorOpen = false;
     Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
     Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
 
@@ -841,6 +854,8 @@ void openCBI_DataDoor() {
 
   } else {
     cbi_dataOpen = true;
+    cbiDoorOpen = true;
+    dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay & Data Door"));
     Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
     Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
@@ -863,9 +878,9 @@ void openCBI_DataDoor() {
 //----------------------------------------------------------------------------
 //  Delay function
 //----------------------------------------------------------------------------
-void waitTime(unsigned long waitTime)
+void waitTime(unsigned long duration)
 {
-  unsigned long endTime = millis() + waitTime;
+  unsigned long endTime = millis() + duration;
   while (millis() < endTime)
   {}// do nothing
 }
@@ -1097,7 +1112,7 @@ void bargraphDisplay(byte disp)
   // start at 1 so it can go all the way to no illuminated LED
   for (int i = 1; i <= value; i++)
   {
-    data |= 0x01 << i - 1;
+    data |= 0x01 << (i - 1);
   }
   // transfer the byte column wise to the video grid
   fillBar(disp, data, value, maxcol);
@@ -1126,22 +1141,6 @@ byte updatebar(byte disp, byte* bargraphdata, byte maxcol)
 // helper for lighting up a bar of LEDs based on a value
 void fillBar(byte disp, byte data, byte value, byte maxcol)
 {
-  byte row;
-
-  // find the row of the bargraph
-  switch (disp)
-  {
-    case 0:
-      row = 2;
-      break;
-    case 1:
-      row = 3;
-      break;
-    default:
-      return;
-      break;
-  }
-
   for (byte col = 0; col < maxcol; col++)
   {
     // test state of LED
