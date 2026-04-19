@@ -265,6 +265,80 @@ void Cantina() {
   digitalWrite(STATUS_LED, HIGH);
 
   playCantina();
+
+  // Doors alternate open/closed in time with the beat (130 BPM = ~461 ms/beat).
+  // Left-to-right order: LEFT, DATA, CBI, RIGHT.
+  // Even positions (LEFT, CBI) open while odd positions (DATA, RIGHT) close, then flip.
+  const unsigned long BEAT_MS = 923; // every 2 beats at 130 BPM
+  const unsigned long DURATION = 15000; // matches the 15-second clip length
+  const int CANTINA_SPEED = 200;        // fast enough to land on the beat
+
+  const int TOP_ARM_HALF   = (TOP_ARM_OPEN    + TOP_ARM_CLOSE)    / 2; // ~1215
+  const int BOTTOM_ARM_HALF = (BOTTOM_ARM_OPEN + BOTTOM_ARM_CLOSE) / 2; // ~1275
+
+  digitalWrite(CBI_SWITCH_PIN, HIGH);
+  digitalWrite(DP_SWITCH_PIN, HIGH);
+
+  Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN,     LEFT_DOOR_MINPULSE,   LEFT_DOOR_MAXPULSE);
+  Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN,     DATA_DOOR_MINPULSE,   DATA_DOOR_MAXPULSE);
+  Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN,       CBI_DOOR_MINPULSE,    CBI_DOOR_MAXPULSE);
+  Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN,   RIGHT_DOOR_MINPULSE,  RIGHT_DOOR_MAXPULSE);
+  Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN,       ARMMINPULSE, ARMMAXPULSE);
+  Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+
+  bool evenOpen = true;
+  unsigned long endTime = millis() + DURATION;
+
+  while (millis() < endTime) {
+    if (evenOpen) {
+      Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN,    CANTINA_SPEED);
+      Servos[DATA_DOOR].write(DATA_DOOR_CLOSE,   CANTINA_SPEED);
+      Servos[CBI_DOOR].write(CBI_DOOR_OPEN,      CANTINA_SPEED);
+      Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE,  CANTINA_SPEED);
+      Servos[TOP_UTIL_ARM].write(TOP_ARM_HALF,    CANTINA_SPEED);
+      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, CANTINA_SPEED);
+    } else {
+      Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE,   CANTINA_SPEED);
+      Servos[DATA_DOOR].write(DATA_DOOR_OPEN,    CANTINA_SPEED);
+      Servos[CBI_DOOR].write(CBI_DOOR_CLOSE,     CANTINA_SPEED);
+      Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN,   CANTINA_SPEED);
+      Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE,   CANTINA_SPEED);
+      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_HALF, CANTINA_SPEED);
+    }
+    evenOpen = !evenOpen;
+    waitTime(BEAT_MS);
+  }
+
+  // Close everything and clean up
+  Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE,       DOOR_CLOSE_SPEED);
+  Servos[DATA_DOOR].write(DATA_DOOR_CLOSE,       DOOR_CLOSE_SPEED);
+  Servos[CBI_DOOR].write(CBI_DOOR_CLOSE,         DOOR_CLOSE_SPEED);
+  Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE,     DOOR_CLOSE_SPEED);
+  Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE,      UTILITYARMSSPEED);
+  Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+
+  waitTime(1000);
+
+  Servos[LEFT_DOOR].detach();
+  Servos[DATA_DOOR].detach();
+  Servos[CBI_DOOR].detach();
+  Servos[RIGHT_DOOR].detach();
+  Servos[TOP_UTIL_ARM].detach();
+  Servos[BOTTOM_UTIL_ARM].detach();
+
+  digitalWrite(CBI_SWITCH_PIN, LOW);
+  digitalWrite(DP_SWITCH_PIN, LOW);
+
+  leftDoorOpen = false;
+  rightDoorOpen = false;
+  cbiDoorOpen = false;
+  dataDoorOpen = false;
+  doorsOpen = false;
+  cbi_dataOpen = false;
+  utilityArmOpen = false;
+  topUtilityArmOpen = false;
+  bottomUtilityArmOpen = false;
+
   digitalWrite(STATUS_LED, LOW);
 }
 
