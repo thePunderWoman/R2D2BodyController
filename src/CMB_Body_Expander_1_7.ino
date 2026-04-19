@@ -195,6 +195,18 @@ void playHello() {
   HCR.PlayWAV(CH_A, "0011");
 }
 
+void playImperialAlarm() {
+  HCR.PlayWAV(CH_A, "0012");
+}
+
+void playBattleAlarm() {
+  HCR.PlayWAV(CH_A, "0013");
+}
+
+void playLove() {
+  HCR.PlayWAV(CH_A, "0014");
+}
+
 
 // Emote Events
 
@@ -258,15 +270,126 @@ void Cantina() {
 
 void overload() {
   digitalWrite(STATUS_LED, HIGH);
-  // TODO: add servo functionality
 
   overloadEmote();
+
+  randomSeed(analogRead(0));
+
+  const uint8_t NUM_PANELS = 6;
+  const uint8_t panels[]    = { TOP_UTIL_ARM,      BOTTOM_UTIL_ARM,      LEFT_DOOR,          RIGHT_DOOR,          CBI_DOOR,          DATA_DOOR          };
+  const int panelPin[]      = { TOP_UTIL_ARM_SERVO_PIN, BOTTOM_UTIL_ARM_SERVO_PIN, LEFT_DOOR_SERVO_PIN, RIGHT_DOOR_SERVO_PIN, CBI_DOOR_SERVO_PIN, DATA_DOOR_SERVO_PIN };
+  const int panelMinPulse[] = { ARMMINPULSE,        ARMMINPULSE,          LEFT_DOOR_MINPULSE, RIGHT_DOOR_MINPULSE, CBI_DOOR_MINPULSE, DATA_DOOR_MINPULSE };
+  const int panelMaxPulse[] = { ARMMAXPULSE,        ARMMAXPULSE,          LEFT_DOOR_MAXPULSE, RIGHT_DOOR_MAXPULSE, CBI_DOOR_MAXPULSE, DATA_DOOR_MAXPULSE };
+  const int panelOpen[]     = { TOP_ARM_OPEN,       BOTTOM_ARM_OPEN,      LEFT_DOOR_OPEN,     RIGHT_DOOR_OPEN,     CBI_DOOR_OPEN,     DATA_DOOR_OPEN     };
+  const int panelClose[]    = { TOP_ARM_CLOSE,      BOTTOM_ARM_CLOSE,     LEFT_DOOR_CLOSE,    RIGHT_DOOR_CLOSE,    CBI_DOOR_CLOSE,    DATA_DOOR_CLOSE    };
+
+  for (uint8_t i = 0; i < NUM_PANELS; i++) {
+    Servos[panels[i]].attach(panelPin[i], panelMinPulse[i], panelMaxPulse[i]);
+  }
+
+  digitalWrite(CBI_SWITCH_PIN, HIGH);
+  digitalWrite(DP_SWITCH_PIN, HIGH);
+  digitalWrite(VM_SWITCH_PIN, HIGH);
+
+  // Spasm burst: fling everything open in a randomized scrambled order
+  uint8_t order[] = { 0, 1, 2, 3, 4, 5 };
+  for (int i = NUM_PANELS - 1; i > 0; i--) {
+    int j = random(i + 1);
+    uint8_t tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+  }
+  for (uint8_t i = 0; i < NUM_PANELS; i++) {
+    uint8_t pi = order[i];
+    Servos[panels[pi]].write(panelOpen[pi], SCREAM_SPEED);
+    waitTime(random(10, 35));
+  }
+
+  // Chaos loop: ~8 seconds of random panels snapping to random positions
+  unsigned long chaosEnd = millis() + 8000;
+  while (millis() < chaosEnd) {
+    uint8_t pi = random(NUM_PANELS);
+    int t = random(4); // 0=closed, 3=fully open, 1-2 are intermediate
+    int pos = panelClose[pi] + (long)(panelOpen[pi] - panelClose[pi]) * t / 3;
+    Servos[panels[pi]].write(pos, SCREAM_SPEED);
+    waitTime(random(40, 180));
+  }
+
+  // Slam everything closed
+  for (uint8_t i = 0; i < NUM_PANELS; i++) {
+    Servos[panels[i]].write(panelClose[i], SCREAM_SPEED);
+  }
+
+  digitalWrite(CBI_SWITCH_PIN, LOW);
+  digitalWrite(DP_SWITCH_PIN, LOW);
+  digitalWrite(VM_SWITCH_PIN, LOW);
+
+  waitTime(1000);
+
+  for (uint8_t i = 0; i < NUM_PANELS; i++) {
+    Servos[panels[i]].detach();
+  }
+
+  doorsOpen = false;
+  leftDoorOpen = false;
+  rightDoorOpen = false;
+  cbi_dataOpen = false;
+  cbiDoorOpen = false;
+  dataDoorOpen = false;
+  utilityArmOpen = false;
+  topUtilityArmOpen = false;
+  bottomUtilityArmOpen = false;
+
+  digitalWrite(STATUS_LED, LOW);
+}
+
+void alarm() {
+  digitalWrite(STATUS_LED, HIGH);
+
+  playImperialAlarm();
   digitalWrite(STATUS_LED, LOW);
 }
 
 //----------------------------------------------------------------------------
 //  Sequences
 //----------------------------------------------------------------------------
+
+//-----------------------------------------------------
+// Love
+//-----------------------------------------------------
+
+void love() {
+  digitalWrite(STATUS_LED, HIGH);
+
+  playLove();
+
+  // Heartbeat: thump-thump...thump-thump...thump-thump
+  // Door lifts slightly open then snaps closed — the snap IS the thump.
+  // 1780=closed against body, 1200=fully open. Lifts only ~1/4 open so it's a subtle pulse.
+  #define HEARTBEAT_LIFT_1    1620  // lift before first thump (slightly bigger)
+  #define HEARTBEAT_LIFT_2    1650  // lift before second thump (slightly smaller)
+  #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
+
+  Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+
+  for (int i = 0; i < 3; i++) {
+    // lift then snap shut — first thump
+    Servos[CBI_DOOR].write(HEARTBEAT_LIFT_1, HEARTBEAT_SPEED);
+    waitTime(120);
+    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
+    waitTime(100);
+
+    // lift then snap shut — second thump (softer)
+    Servos[CBI_DOOR].write(HEARTBEAT_LIFT_2, HEARTBEAT_SPEED);
+    waitTime(100);
+    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
+
+    // pause between heartbeat pairs
+    waitTime(700);
+  }
+
+  Servos[CBI_DOOR].detach();
+
+  digitalWrite(STATUS_LED, LOW);
+}
 
 //-----------------------------------------------------
 // Reset/Close All
@@ -951,6 +1074,10 @@ void doCommand(const char* cmd) {
     BottomUtilityArm();
   } else if (strcmp(cmd, "HELLO") == 0) {
     playHello();
+  } else if (strcmp(cmd, "ALARM") == 0) {
+    alarm();
+  } else if (strcmp(cmd, "LOVE") == 0) {
+    love();
   } else {
     digitalWrite(STATUS_LED, LOW);
   }
