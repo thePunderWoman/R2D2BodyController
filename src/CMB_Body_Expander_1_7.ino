@@ -271,6 +271,7 @@ void Cantina() {
   // Even positions (LEFT, CBI) open while odd positions (DATA, RIGHT) close, then flip.
   const unsigned long BEAT_MS = 923; // every 2 beats at 130 BPM
   const unsigned long DURATION = 15000; // matches the 15-second clip length
+  waitTime(88);
   const int CANTINA_SPEED = 200;        // fast enough to land on the beat
 
   const int TOP_ARM_HALF   = (TOP_ARM_OPEN    + TOP_ARM_CLOSE)    / 2; // ~1215
