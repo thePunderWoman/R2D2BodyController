@@ -428,10 +428,10 @@ void alarm() {
 //----------------------------------------------------------------------------
 
 //-----------------------------------------------------
-// Love
+// Heartbeat Sequence
 //-----------------------------------------------------
 
-void love() {
+void heart() {
   digitalWrite(STATUS_LED, HIGH);
 
   playLove();
@@ -1151,8 +1151,8 @@ void doCommand(const char* cmd) {
     playHello();
   } else if (strcmp(cmd, "ALARM") == 0) {
     alarm();
-  } else if (strcmp(cmd, "LOVE") == 0) {
-    love();
+  } else if (strcmp(cmd, "HEART") == 0) {
+    heart();
   } else {
     digitalWrite(STATUS_LED, LOW);
   }
