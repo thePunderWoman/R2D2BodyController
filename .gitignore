@@ -13,3 +13,4 @@ lib/*
 
 # Claude Code internal state
 .claude/
+memory/

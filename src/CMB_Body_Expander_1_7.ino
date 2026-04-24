@@ -358,49 +358,48 @@ void overload() {
   const int panelOpen[]     = { TOP_ARM_OPEN,       BOTTOM_ARM_OPEN,      LEFT_DOOR_OPEN,     RIGHT_DOOR_OPEN,     CBI_DOOR_OPEN,     DATA_DOOR_OPEN     };
   const int panelClose[]    = { TOP_ARM_CLOSE,      BOTTOM_ARM_CLOSE,     LEFT_DOOR_CLOSE,    RIGHT_DOOR_CLOSE,    CBI_DOOR_CLOSE,    DATA_DOOR_CLOSE    };
 
-  for (uint8_t i = 0; i < NUM_PANELS; i++) {
-    Servos[panels[i]].attach(panelPin[i], panelMinPulse[i], panelMaxPulse[i]);
+  // Shuffle panel order, then pick 2 or 3 to participate
+  uint8_t order[] = { 0, 1, 2, 3, 4, 5 };
+  for (int i = NUM_PANELS - 1; i > 0; i--) {
+    int j = random(i + 1);
+    uint8_t tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+  }
+  uint8_t count = random(2, 4); // 2 or 3 panels
+
+  for (uint8_t i = 0; i < count; i++) {
+    Servos[panels[order[i]]].attach(panelPin[order[i]], panelMinPulse[order[i]], panelMaxPulse[order[i]]);
   }
 
   digitalWrite(CBI_SWITCH_PIN, HIGH);
   digitalWrite(DP_SWITCH_PIN, HIGH);
   digitalWrite(VM_SWITCH_PIN, HIGH);
 
-  // Spasm burst: fling everything open in a randomized scrambled order
-  uint8_t order[] = { 0, 1, 2, 3, 4, 5 };
-  for (int i = NUM_PANELS - 1; i > 0; i--) {
-    int j = random(i + 1);
-    uint8_t tmp = order[i]; order[i] = order[j]; order[j] = tmp;
-  }
-  for (uint8_t i = 0; i < NUM_PANELS; i++) {
+  // Lost-connection drift: each selected panel sluggishly creeps to a random
+  // position up to halfway open, then stops as if it lost signal.
+  #define OVERLOAD_DRIFT_SPEED 30
+
+  for (uint8_t i = 0; i < count; i++) {
     uint8_t pi = order[i];
-    Servos[panels[pi]].write(panelOpen[pi], SCREAM_SPEED);
-    waitTime(random(10, 35));
+    int pos = panelClose[pi] + (long)(panelOpen[pi] - panelClose[pi]) * random(10, 51) / 100;
+    Servos[panels[pi]].write(pos, OVERLOAD_DRIFT_SPEED);
+    waitTime(random(400, 900));
   }
 
-  // Chaos loop: ~8 seconds of random panels snapping to random positions
-  unsigned long chaosEnd = millis() + 8000;
-  while (millis() < chaosEnd) {
-    uint8_t pi = random(NUM_PANELS);
-    int t = random(4); // 0=closed, 3=fully open, 1-2 are intermediate
-    int pos = panelClose[pi] + (long)(panelOpen[pi] - panelClose[pi]) * t / 3;
-    Servos[panels[pi]].write(pos, SCREAM_SPEED);
-    waitTime(random(40, 180));
-  }
+  waitTime(2500); // hold the glitched pose
 
-  // Slam everything closed
-  for (uint8_t i = 0; i < NUM_PANELS; i++) {
-    Servos[panels[i]].write(panelClose[i], SCREAM_SPEED);
+  // Snap closed
+  for (uint8_t i = 0; i < count; i++) {
+    Servos[panels[order[i]]].write(panelClose[order[i]], SCREAM_SPEED);
   }
 
   digitalWrite(CBI_SWITCH_PIN, LOW);
   digitalWrite(DP_SWITCH_PIN, LOW);
   digitalWrite(VM_SWITCH_PIN, LOW);
 
-  waitTime(1000);
+  waitTime(800);
 
-  for (uint8_t i = 0; i < NUM_PANELS; i++) {
-    Servos[panels[i]].detach();
+  for (uint8_t i = 0; i < count; i++) {
+    Servos[panels[order[i]]].detach();
   }
 
   doorsOpen = false;
