@@ -375,8 +375,6 @@ void overload() {
 
   // Lost-connection drift: each selected panel sluggishly creeps to a random
   // position up to halfway open, then stops as if it lost signal.
-  #define OVERLOAD_DRIFT_SPEED 30
-
   for (uint8_t i = 0; i < count; i++) {
     uint8_t pi = order[i];
     int pos = panelClose[pi] + (long)(panelOpen[pi] - panelClose[pi]) * random(10, 51) / 100;

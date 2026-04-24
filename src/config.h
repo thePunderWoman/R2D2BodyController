@@ -69,6 +69,8 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 
 #define SCREAM_SPEED 250
 
+#define OVERLOAD_DRIFT_SPEED 30
+
 //Tweaked Pulse Widths. Usually 1000-2000 or 500-2500
 #define ARMMINPULSE 600
 #define ARMMAXPULSE 2400
