@@ -199,14 +199,13 @@ void playImperialAlarm() {
   HCR.PlayWAV(CH_A, "0012");
 }
 
-void playLove() {
+void playBattleAlarm() {
   HCR.PlayWAV(CH_A, "0013");
 }
 
-void playBattleAlarm() {
+void playLove() {
   HCR.PlayWAV(CH_A, "0014");
 }
-
 
 // Emote Events
 
