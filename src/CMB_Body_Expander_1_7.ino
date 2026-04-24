@@ -199,11 +199,11 @@ void playImperialAlarm() {
   HCR.PlayWAV(CH_A, "0012");
 }
 
-void playBattleAlarm() {
+void playLove() {
   HCR.PlayWAV(CH_A, "0013");
 }
 
-void playLove() {
+void playBattleAlarm() {
   HCR.PlayWAV(CH_A, "0014");
 }
 
@@ -436,12 +436,13 @@ void heart() {
   playLove();
 
   // Heartbeat: thump-thump...thump-thump...thump-thump
-  // Door lifts slightly open then snaps closed — the snap IS the thump.
-  // 1780=closed against body, 1200=fully open. Lifts only ~1/4 open so it's a subtle pulse.
-  #define HEARTBEAT_LIFT_1    1620  // lift before first thump (slightly bigger)
-  #define HEARTBEAT_LIFT_2    1650  // lift before second thump (slightly smaller)
+  // Door lifts open then snaps closed — the snap IS the thump.
+  // 1780=closed against body, 1200=fully open. Lifts ~halfway open for a visible pulse.
+  #define HEARTBEAT_LIFT_1    1500  // lift before first thump (bigger)
+  #define HEARTBEAT_LIFT_2    1540  // lift before second thump (slightly smaller)
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
+  digitalWrite(CBI_SWITCH_PIN, HIGH);
   Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
 
   for (int i = 0; i < 3; i++) {
@@ -461,6 +462,7 @@ void heart() {
   }
 
   Servos[CBI_DOOR].detach();
+  digitalWrite(CBI_SWITCH_PIN, LOW);
 
   digitalWrite(STATUS_LED, LOW);
 }
