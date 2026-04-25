@@ -207,6 +207,14 @@ void playLove() {
   HCR.PlayWAV(CH_A, "0014");
 }
 
+void playRockMarch() {
+  HCR.PlayWAV(CH_A, "0015");
+}
+
+void playDisco() {
+  HCR.PlayWAV(CH_A, "0016");
+}
+
 // Emote Events
 
 void enableMuse() {
@@ -250,6 +258,20 @@ void Vader() {
   digitalWrite(STATUS_LED, HIGH);
 
   playVader();
+  digitalWrite(STATUS_LED, LOW);
+}
+
+void RockMarch() {
+  digitalWrite(STATUS_LED, HIGH);
+
+  playRockMarch();
+  digitalWrite(STATUS_LED, LOW);
+}
+
+void Disco() {
+  digitalWrite(STATUS_LED, HIGH);
+
+  playDisco();
   digitalWrite(STATUS_LED, LOW);
 }
 
@@ -439,17 +461,19 @@ void heart() {
   #define HEARTBEAT_LIFT_2    1540  // lift before second thump (slightly smaller)
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
+  showHeartLEDs();
+
   digitalWrite(CBI_SWITCH_PIN, HIGH);
   Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
 
   for (int i = 0; i < 3; i++) {
-    // lift then snap shut — first thump
+    // lift then snap shut — first thump; flash heart on the snap
     Servos[CBI_DOOR].write(HEARTBEAT_LIFT_1, HEARTBEAT_SPEED);
     waitTime(120);
     Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
     waitTime(100);
 
-    // lift then snap shut — second thump (softer)
+    // lift then snap shut — second thump (softer); flash heart on the snap
     Servos[CBI_DOOR].write(HEARTBEAT_LIFT_2, HEARTBEAT_SPEED);
     waitTime(100);
     Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
@@ -457,6 +481,8 @@ void heart() {
     // pause between heartbeat pairs
     waitTime(700);
   }
+
+  stopHeartLEDs();
 
   Servos[CBI_DOOR].detach();
   digitalWrite(CBI_SWITCH_PIN, LOW);
@@ -766,17 +792,18 @@ void Scream() {
   Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
   Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
 
+  digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
+  digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
+
   for (int i = 0; i < 7; i++) {
 
     DEBUG_PRINT(F("Loop:"));
     DEBUG_PRINT_LN(i + 1);
     Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, SCREAM_SPEED);
     Servos[DATA_DOOR].write(DATA_DOOR_OPEN, SCREAM_SPEED);
-    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
 
     Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, SCREAM_SPEED);
     Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, SCREAM_SPEED);
-    digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
 
     Servos[TOP_UTIL_ARM].write(1250, 255);
     Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, 255);
@@ -785,11 +812,9 @@ void Scream() {
 
     Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, SCREAM_SPEED);
     Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, SCREAM_SPEED);
-    digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
 
     Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, SCREAM_SPEED);
     Servos[CBI_DOOR].write(CBI_DOOR_OPEN, SCREAM_SPEED);
-    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
 
     Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, 255); // open at moderate speed
     Servos[BOTTOM_UTIL_ARM].write(1250, 255); // 0=open all the way
@@ -888,6 +913,10 @@ void Doors() {
     cbiDoorOpen = true;
     dataDoorOpen = true;
 
+    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
+    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
+    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
+
     Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
     Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
     Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
@@ -897,10 +926,6 @@ void Doors() {
     Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
     Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
     Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
-
-    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
-    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
     waitTime(1000);
 
@@ -978,10 +1003,11 @@ void openCBIDoor() {
   } else {
     cbiDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay Door"));
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
+
+    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
     Servos[CBI_DOOR].detach();
@@ -1008,11 +1034,12 @@ void openDataDoor() {
   } else {
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Data Port Door"));
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
     digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
+
+    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
+    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
     Servos[DATA_DOOR].detach();
@@ -1053,15 +1080,16 @@ void openCBI_DataDoor() {
     cbiDoorOpen = true;
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay & Data Door"));
+
+    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
+    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
+    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
+
     Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
     Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
 
     Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
     Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
-
-    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
-    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
     waitTime(1000);
     Servos[CBI_DOOR].detach();
@@ -1115,6 +1143,8 @@ void doCommand(const char* cmd) {
     digitalWrite(STATUS_LED, HIGH);
   } else if (strcmp(cmd, "VADER") == 0) {
     Vader();
+  } else if (strcmp(cmd, "ROCKMARCH") == 0) {
+    RockMarch();
   } else if (strcmp(cmd, "THEME") == 0) {
     Theme();
   } else if (strcmp(cmd, "CANTINA") == 0) {
@@ -1151,6 +1181,8 @@ void doCommand(const char* cmd) {
     alarm();
   } else if (strcmp(cmd, "HEART") == 0) {
     heart();
+  } else if (strcmp(cmd, "DISCO") == 0) {
+    Disco();
   } else {
     digitalWrite(STATUS_LED, LOW);
   }
@@ -1439,4 +1471,26 @@ void getVCC()
   DEBUG_PRINT(F("\tVolts Calc = "));
   DEBUG_PRINT_LN_DEC(vin, 1);   //Print float "vin" with 1 decimal place
 #endif
+}
+
+///////////////////////////////////
+// Heart sequence LED helpers
+//
+// CBI matrix is 4 rows x 5 cols (rows 0-3, cols 0-4).
+// setRow byte: bit7=col0
+//   Row 0: . X . X .  = 0x50
+//   Row 1: X X X X X  = 0xF8
+//   Row 2: . X X X .  = 0x70
+//   Row 3: . . X . .  = 0x20
+
+void showHeartLEDs() {
+  lc.clearDisplay(CBI);
+  lc.setRow(CBI, 0, 0x50);
+  lc.setRow(CBI, 1, 0xF8);
+  lc.setRow(CBI, 2, 0x70);
+  lc.setRow(CBI, 3, 0x20);
+}
+
+void stopHeartLEDs() {
+  lc.clearDisplay(CBI);
 }
