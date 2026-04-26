@@ -54,6 +54,12 @@ bool dataDoorOpen = false;
 bool doorsOpen = false;
 bool cbi_dataOpen = false;
 
+// LED animation modes for CB/DP serial commands: 0=normal, 1=disabled
+uint8_t cbiLEDMode = 0;
+uint8_t dpLEDMode  = 0;
+unsigned long cbiModeEnd = 0;  // millis() when to revert; 0 = no timeout
+unsigned long dpModeEnd  = 0;
+
 // Instantiate LedControl driver
 LedControl lc = LedControl(DATAIN_PIN, CLOCK_PIN, LOAD_PIN, NUMDEV);
 
@@ -119,6 +125,9 @@ void loop() {
   {
     lc.shutdown(DATAPORT, false);
   }
+
+  if (cbiModeEnd && millis() >= cbiModeEnd) { cbiLEDMode = 0; cbiModeEnd = 0; }
+  if (dpModeEnd  && millis() >= dpModeEnd)  { dpLEDMode  = 0; dpModeEnd  = 0; }
 
   // this is the new code. Every block of LEDs is handled independently
   updateTopBlocks();
@@ -461,10 +470,10 @@ void heart() {
   #define HEARTBEAT_LIFT_2    1540  // lift before second thump (slightly smaller)
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
-  showHeartLEDs();
-
   digitalWrite(CBI_SWITCH_PIN, HIGH);
   Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+
+  showHeartLEDs();
 
   for (int i = 0; i < 3; i++) {
     // lift then snap shut — first thump; flash heart on the snap
@@ -1111,6 +1120,197 @@ void waitTime(unsigned long duration)
 
 // Serial Command Functions
 
+// ---------------------------------------------------------------------------
+// Marcduino / ReelTwo serial protocol handlers
+// ---------------------------------------------------------------------------
+
+// CB<val>\n  — charge bay LED sequence
+// DP<val>\n  — data panel LED sequence
+// val encoding: (seq * 10000) + (speed * 100) + duration_seconds
+// seq 0 = normal/flicker (resume animation), seq 1 = disabled (blank display)
+void doCBILEDCommand(long val) {
+  uint8_t seq = (uint8_t)(val / 10000);
+  uint8_t dur = (uint8_t)(val % 100);
+  cbiLEDMode = (seq == 1) ? 1 : 0;
+  cbiModeEnd = (dur > 0) ? millis() + (unsigned long)dur * 1000UL : 0;
+  if (cbiLEDMode == 1) lc.clearDisplay(CBI);
+}
+
+void doDPLEDCommand(long val) {
+  uint8_t seq = (uint8_t)(val / 10000);
+  uint8_t dur = (uint8_t)(val % 100);
+  dpLEDMode = (seq == 1) ? 1 : 0;
+  dpModeEnd = (dur > 0) ? millis() + (unsigned long)dur * 1000UL : 0;
+  if (dpLEDMode == 1) lc.clearDisplay(DATAPORT);
+}
+
+// Marcduino body panel numbering used here:
+// 0=all  1=top arm  2=bottom arm  3=left door  4=right door  5=CBI  6=data panel
+// Adjust to match your body master's panel assignment if needed.
+void doMarcduinoOpen(uint8_t panel) {
+  switch (panel) {
+    case 0:
+      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
+      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
+      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
+      Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED2);
+      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED2);
+      Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+      Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+      digitalWrite(CBI_SWITCH_PIN, HIGH);
+      digitalWrite(DP_SWITCH_PIN, HIGH);
+      digitalWrite(VM_SWITCH_PIN, HIGH);
+      waitTime(900);
+      Servos[TOP_UTIL_ARM].detach(); Servos[BOTTOM_UTIL_ARM].detach();
+      Servos[LEFT_DOOR].detach(); Servos[RIGHT_DOOR].detach();
+      Servos[CBI_DOOR].detach(); Servos[DATA_DOOR].detach();
+      topUtilityArmOpen = true; bottomUtilityArmOpen = true; utilityArmOpen = true;
+      leftDoorOpen = true; rightDoorOpen = true;
+      cbiDoorOpen = true; dataDoorOpen = true;
+      doorsOpen = true; cbi_dataOpen = true;
+      break;
+    case 1:
+      if (topUtilityArmOpen) return;
+      topUtilityArmOpen = true;
+      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED);
+      waitTime(900); Servos[TOP_UTIL_ARM].detach();
+      break;
+    case 2:
+      if (bottomUtilityArmOpen) return;
+      bottomUtilityArmOpen = true;
+      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
+      waitTime(900); Servos[BOTTOM_UTIL_ARM].detach();
+      break;
+    case 3:
+      if (leftDoorOpen) return;
+      leftDoorOpen = true;
+      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
+      Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900); Servos[LEFT_DOOR].detach();
+      break;
+    case 4:
+      if (rightDoorOpen) return;
+      rightDoorOpen = true;
+      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
+      Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900); Servos[RIGHT_DOOR].detach();
+      break;
+    case 5:
+      if (cbiDoorOpen) return;
+      cbiDoorOpen = true;
+      digitalWrite(CBI_SWITCH_PIN, HIGH);
+      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+      Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900); Servos[CBI_DOOR].detach();
+      break;
+    case 6:
+      if (dataDoorOpen) return;
+      dataDoorOpen = true;
+      digitalWrite(DP_SWITCH_PIN, HIGH);
+      digitalWrite(VM_SWITCH_PIN, HIGH);
+      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
+      Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900); Servos[DATA_DOOR].detach();
+      break;
+  }
+}
+
+void doMarcduinoClose(uint8_t panel) {
+  switch (panel) {
+    case 0:
+      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
+      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
+      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
+      Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
+      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+      Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      digitalWrite(CBI_SWITCH_PIN, LOW);
+      digitalWrite(DP_SWITCH_PIN, LOW);
+      digitalWrite(VM_SWITCH_PIN, LOW);
+      waitTime(900);
+      Servos[TOP_UTIL_ARM].detach(); Servos[BOTTOM_UTIL_ARM].detach();
+      Servos[LEFT_DOOR].detach(); Servos[RIGHT_DOOR].detach();
+      Servos[CBI_DOOR].detach(); Servos[DATA_DOOR].detach();
+      topUtilityArmOpen = false; bottomUtilityArmOpen = false; utilityArmOpen = false;
+      leftDoorOpen = false; rightDoorOpen = false;
+      cbiDoorOpen = false; dataDoorOpen = false;
+      doorsOpen = false; cbi_dataOpen = false;
+      break;
+    case 1:
+      if (!topUtilityArmOpen) return;
+      topUtilityArmOpen = false;
+      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
+      waitTime(900); Servos[TOP_UTIL_ARM].detach();
+      break;
+    case 2:
+      if (!bottomUtilityArmOpen) return;
+      bottomUtilityArmOpen = false;
+      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
+      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+      waitTime(900); Servos[BOTTOM_UTIL_ARM].detach();
+      break;
+    case 3:
+      if (!leftDoorOpen) return;
+      leftDoorOpen = false;
+      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
+      Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      waitTime(900); Servos[LEFT_DOOR].detach();
+      break;
+    case 4:
+      if (!rightDoorOpen) return;
+      rightDoorOpen = false;
+      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
+      Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      waitTime(900); Servos[RIGHT_DOOR].detach();
+      break;
+    case 5:
+      if (!cbiDoorOpen) return;
+      cbiDoorOpen = false;
+      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
+      Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      digitalWrite(CBI_SWITCH_PIN, LOW);
+      waitTime(900); Servos[CBI_DOOR].detach();
+      break;
+    case 6:
+      if (!dataDoorOpen) return;
+      dataDoorOpen = false;
+      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
+      Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      digitalWrite(DP_SWITCH_PIN, LOW);
+      digitalWrite(VM_SWITCH_PIN, LOW);
+      waitTime(900); Servos[DATA_DOOR].detach();
+      break;
+  }
+}
+
+// :OP<nn>  :CL<nn>  :SE<nn>
+void doMarcduinoCommand(const char* cmd) {
+  if (strncmp(cmd, "OP", 2) == 0) {
+    doMarcduinoOpen((uint8_t)atoi(cmd + 2));
+  } else if (strncmp(cmd, "CL", 2) == 0) {
+    doMarcduinoClose((uint8_t)atoi(cmd + 2));
+  } else if (strncmp(cmd, "SE", 2) == 0) {
+    switch (atoi(cmd + 2)) {
+      case 0: resetServos(); break;
+      case 1: Scream(); break;
+    }
+  }
+}
+
 void readSerial() {
   static char buf[32];
   static uint8_t idx = 0;
@@ -1122,6 +1322,12 @@ void readSerial() {
         buf[idx] = '\0';
         if (strncmp(buf, "BD:", 3) == 0) {
           doCommand(buf + 3);
+        } else if (strncmp(buf, "CB", 2) == 0) {
+          doCBILEDCommand(atol(buf + 2));
+        } else if (strncmp(buf, "DP", 2) == 0) {
+          doDPLEDCommand(atol(buf + 2));
+        } else if (buf[0] == ':') {
+          doMarcduinoCommand(buf + 1);
         }
         idx = 0;
       }
@@ -1247,6 +1453,7 @@ void singleTest()
 // (green and yellow blocks)
 void updateTopBlocks()
 {
+  if (dpLEDMode == 1) return;
   static unsigned long timeLast = 0;
   unsigned long elapsed;
   elapsed = millis();
@@ -1263,6 +1470,7 @@ void updateTopBlocks()
 //
 void updateCBILEDs()
 {
+  if (cbiLEDMode == 1) return;
   static unsigned long timeLast = 0;
   unsigned long elapsed;
   elapsed = millis();
@@ -1321,6 +1529,7 @@ byte randomRow(byte randomMode)
 
 void bargraphDisplay(byte disp)
 {
+  if (dpLEDMode == 1) return;
   static byte bargraphdata[MAXGRAPH]; // status of bars
 
   if (disp >= MAXGRAPH) return;
@@ -1404,6 +1613,7 @@ void fillBar(byte disp, byte data, byte value, byte maxcol)
 // This animates the bottom white LEDs
 void updatebottomLEDs()
 {
+  if (dpLEDMode == 1) return;
   static unsigned long timeLast = 0;
   unsigned long elapsed = millis();
   if ((elapsed - timeLast) < BOTTOMLEDSPEED) return;
@@ -1417,6 +1627,7 @@ void updatebottomLEDs()
 // This is for the two red LEDs
 void updateRedLEDs()
 {
+  if (dpLEDMode == 1) return;
   static unsigned long timeLast = 0;
   unsigned long elapsed = millis();
   if ((elapsed - timeLast) < REDLEDSPEED) return;
@@ -1432,6 +1643,7 @@ void updateRedLEDs()
 // Uses a random delay, which never exceeds BLUELEDSPEED
 void updateBlueLEDs()
 {
+  if (dpLEDMode == 1) return;
   static unsigned long timeLast = 0;
   static unsigned long variabledelay = BLUELEDSPEED;
   unsigned long elapsed = millis();
