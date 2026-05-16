@@ -84,23 +84,23 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 #define CBI_DOOR_MINPULSE 650
 #define CBI_DOOR_MAXPULSE 2200
 
-#define DATA_DOOR_MINPULSE 650
-#define DATA_DOOR_MAXPULSE 2200
+#define DATA_DOOR_MINPULSE 2200
+#define DATA_DOOR_MAXPULSE 650
 
 //Servo Positions
 #define TOP_ARM_OPEN 650
 #define BOTTOM_ARM_OPEN 750
 #define LEFT_DOOR_OPEN 1300
 #define RIGHT_DOOR_OPEN 1400
-#define CBI_DOOR_OPEN 1200
-#define DATA_DOOR_OPEN 2100
+#define CBI_DOOR_OPEN 1100
+#define DATA_DOOR_OPEN 950
 
 #define TOP_ARM_CLOSE 1780
 #define BOTTOM_ARM_CLOSE 1800
 #define LEFT_DOOR_CLOSE 750
 #define RIGHT_DOOR_CLOSE 2100
 #define CBI_DOOR_CLOSE 1780
-#define DATA_DOOR_CLOSE 1200
+#define DATA_DOOR_CLOSE 1650
 
 // change this to match which Arduino pins you connect your panel to,
 // which can be any 3 digital pins you have available.
