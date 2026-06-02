@@ -90,15 +90,15 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 //Servo Positions
 #define TOP_ARM_OPEN 650
 #define BOTTOM_ARM_OPEN 750
-#define LEFT_DOOR_OPEN 1300
-#define RIGHT_DOOR_OPEN 1400
+#define LEFT_DOOR_OPEN 2200
+#define RIGHT_DOOR_OPEN 1430
 #define CBI_DOOR_OPEN 1100
 #define DATA_DOOR_OPEN 950
 
 #define TOP_ARM_CLOSE 1780
 #define BOTTOM_ARM_CLOSE 1800
-#define LEFT_DOOR_CLOSE 750
-#define RIGHT_DOOR_CLOSE 2100
+#define LEFT_DOOR_CLOSE 1500
+#define RIGHT_DOOR_CLOSE 2000
 #define CBI_DOOR_CLOSE 1780
 #define DATA_DOOR_CLOSE 1650
 
