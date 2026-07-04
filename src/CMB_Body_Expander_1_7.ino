@@ -19,26 +19,29 @@
 #include <LedControl.h>
 #include "config.h"
 #include <hcr.h>
-#include <setjmp.h>
 
 // Serial command port — hardware Serial (the only port on a Pro Mini)
 #define COMMAND_SERIAL Serial
 #define COMMAND_BAUD   9600
 
-// ESTOP: setjmp target that waitTime() longjmps back to when it sees "BD:ESTOP"
-// arrive mid-sequence, so a blocking sequence can be aborted from any call depth
-// without threading an abort check through every function.
-jmp_buf estopJumpBuf;
-volatile bool eStopActive = false;
-
-// Command line received while a sequence was mid-wait; held until the next
-// loop() pass instead of being dropped (mirrors the pre-ESTOP behavior where
-// commands just queued in the UART buffer until the running sequence finished).
-char pendingLine[32] = {0};
-
 float vout = 0.0;       // for voltage out measured analog input
 int value = 0;          // used to hold the analog value coming out of the voltage divider
 float vin = 0.0;        // voltage calculated... since the divider allows for 15 volts
+
+#define VOLUME_HIGH 2
+#define VOLUME_LOW 1
+#define VOLUME_MUTE 0
+
+int voiceVolumeHigh = 90;
+int chaVolumeHigh = 50;
+int chbVolumeHigh = 50;
+int voiceVolumeLow = 50;
+int chaVolumeLow = 25;
+int chbVolumeLow = 25;
+int volumeLevel = VOLUME_HIGH; 
+bool muse = true;
+
+unsigned long loopTime; // Time variable
 
 // Some variables to keep track of doors and arms etc.
 bool utilityArmOpen = false;
@@ -106,18 +109,6 @@ void setup()
 }
 
 void loop() {
-  if (setjmp(estopJumpBuf)) {
-    // Landed here because waitTime() saw an ESTOP mid-sequence and jumped out
-    // from whatever depth it was at. Servos are already frozen in place by
-    // performEStop(); just let this pass end and loop() restart clean.
-    return;
-  }
-
-  if (pendingLine[0] != '\0') {
-    dispatchLine(pendingLine);
-    pendingLine[0] = '\0';
-  }
-
   if (digitalRead(CBI_SWITCH_PIN) == LOW)
   {
     lc.shutdown(CBI, true);
@@ -238,10 +229,12 @@ void playDisco() {
 void enableMuse() {
   HCR.Muse(20,45);
   HCR.SetMuse(1);
+  muse = true;
 }
 
 void disableMuse() {
   HCR.SetMuse(0);
+  muse = false;
 }
 
 void resetVocalizer() {
@@ -295,41 +288,6 @@ void Theme() {
   digitalWrite(STATUS_LED, HIGH);
 
   playSWTheme();
-  digitalWrite(STATUS_LED, LOW);
-}
-
-void BattleAlarm() {
-  digitalWrite(STATUS_LED, HIGH);
-
-  playBattleAlarm();
-  digitalWrite(STATUS_LED, LOW);
-}
-
-void Clones() {
-  digitalWrite(STATUS_LED, HIGH);
-
-  playClones();
-  digitalWrite(STATUS_LED, LOW);
-}
-
-void Duel() {
-  digitalWrite(STATUS_LED, HIGH);
-
-  playDuel();
-  digitalWrite(STATUS_LED, LOW);
-}
-
-void LukeJabba() {
-  digitalWrite(STATUS_LED, HIGH);
-
-  playLukeJabba();
-  digitalWrite(STATUS_LED, LOW);
-}
-
-void Throne() {
-  digitalWrite(STATUS_LED, HIGH);
-
-  playThrone();
   digitalWrite(STATUS_LED, LOW);
 }
 
@@ -493,28 +451,6 @@ void alarm() {
 }
 
 //----------------------------------------------------------------------------
-//  E S T O P  —  emergency stop
-//----------------------------------------------------------------------------
-// Freezes every attached servo exactly where it is, right now, and latches
-// the board so no further motion command is accepted until RESET is sent.
-// Safe to call any time: from doCommand() when idle, or from waitTime() to
-// preempt a sequence that's mid-wait (see waitTime() below).
-void performEStop() {
-  eStopActive = true;
-  pendingLine[0] = '\0'; // drop anything queued mid-sequence; require a fresh RESET
-
-  DEBUG_PRINT_LN(F("!!! ESTOP - freezing all servos in place !!!"));
-
-  for (uint8_t i = 0; i < NBR_SERVOS; i++) {
-    if (Servos[i].attached()) {
-      Servos[i].stop(); // holds current position under power, does not detach
-    }
-  }
-
-  digitalWrite(STATUS_LED, HIGH); // solid on = estopped; send RESET to clear
-}
-
-//----------------------------------------------------------------------------
 //  Sequences
 //----------------------------------------------------------------------------
 
@@ -564,74 +500,10 @@ void heart() {
 }
 
 //-----------------------------------------------------
-// Flutter Sequence
-//-----------------------------------------------------
-
-void Flutter() {
-  digitalWrite(STATUS_LED, HIGH);
-
-  const int RIGHT_DOOR_HALF = RIGHT_DOOR_CLOSE + (RIGHT_DOOR_OPEN - RIGHT_DOOR_CLOSE) / 2;
-  const int CBI_DOOR_HALF   = CBI_DOOR_CLOSE   + (CBI_DOOR_OPEN   - CBI_DOOR_CLOSE)   / 2;
-  const int DATA_DOOR_HALF  = DATA_DOOR_CLOSE  + (DATA_DOOR_OPEN  - DATA_DOOR_CLOSE)  / 2;
-  const int LEFT_DOOR_HALF  = LEFT_DOOR_CLOSE  + (LEFT_DOOR_OPEN  - LEFT_DOOR_CLOSE)  / 2;
-
-  // Right-to-left order across the body: RIGHT, CBI, DATA, LEFT
-  const uint8_t doors[]    = { RIGHT_DOOR,           CBI_DOOR,           DATA_DOOR,           LEFT_DOOR           };
-  const int doorPin[]      = { RIGHT_DOOR_SERVO_PIN, CBI_DOOR_SERVO_PIN, DATA_DOOR_SERVO_PIN, LEFT_DOOR_SERVO_PIN };
-  const int doorMinPulse[] = { RIGHT_DOOR_MINPULSE,  CBI_DOOR_MINPULSE,  DATA_DOOR_MINPULSE,  LEFT_DOOR_MINPULSE  };
-  const int doorMaxPulse[] = { RIGHT_DOOR_MAXPULSE,  CBI_DOOR_MAXPULSE,  DATA_DOOR_MAXPULSE,  LEFT_DOOR_MAXPULSE  };
-  const int doorHalf[]     = { RIGHT_DOOR_HALF,      CBI_DOOR_HALF,      DATA_DOOR_HALF,      LEFT_DOOR_HALF      };
-  const int doorClose[]    = { RIGHT_DOOR_CLOSE,     CBI_DOOR_CLOSE,     DATA_DOOR_CLOSE,     LEFT_DOOR_CLOSE     };
-
-  for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].attach(doorPin[i], doorMinPulse[i], doorMaxPulse[i]);
-  }
-
-  digitalWrite(CBI_SWITCH_PIN, HIGH);
-  digitalWrite(DP_SWITCH_PIN, HIGH);
-  digitalWrite(VM_SWITCH_PIN, HIGH);
-
-  // Wave open, right to left, each door lifting halfway
-  for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].write(doorHalf[i], FLUTTER_SPEED);
-    waitTime(FLUTTER_STAGGER_MS);
-  }
-
-  waitTime(FLUTTER_HOLD_MS); // hold halfway open
-
-  // Wave close, right to left
-  for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].write(doorClose[i], FLUTTER_SPEED);
-    waitTime(FLUTTER_STAGGER_MS);
-  }
-
-  waitTime(500); // wait on last door to reach position
-
-  for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].detach();
-  }
-
-  digitalWrite(CBI_SWITCH_PIN, LOW);
-  digitalWrite(DP_SWITCH_PIN, LOW);
-  digitalWrite(VM_SWITCH_PIN, LOW);
-
-  doorsOpen = false;
-  leftDoorOpen = false;
-  rightDoorOpen = false;
-  cbi_dataOpen = false;
-  cbiDoorOpen = false;
-  dataDoorOpen = false;
-
-  digitalWrite(STATUS_LED, LOW);
-}
-
-//-----------------------------------------------------
 // Reset/Close All
 //-----------------------------------------------------
 
 void resetServos() {
-
-  eStopActive = false; // RESET is the only thing that clears a latched ESTOP
 
   Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
   Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED3);
@@ -1243,18 +1115,7 @@ void waitTime(unsigned long duration)
 {
   unsigned long endTime = millis() + duration;
   while (millis() < endTime)
-  {
-    // Keep draining serial during the wait so ESTOP can preempt a running
-    // sequence instead of sitting in the UART buffer until this wait ends.
-    if (pumpSerialLine()) {
-      if (strcmp(pendingLine, "BD:ESTOP") == 0) {
-        performEStop();
-        longjmp(estopJumpBuf, 1); // abort straight back out to loop(), no matter how deep we are
-      }
-      // Anything else received mid-sequence is held in pendingLine and
-      // dispatched once loop() resumes, same as it would've been before.
-    }
-  }
+  {}// do nothing
 }
 
 // Serial Command Functions
@@ -1287,7 +1148,6 @@ void doDPLEDCommand(long val) {
 // 0=all  1=top arm  2=bottom arm  3=left door  4=right door  5=CBI  6=data panel
 // Adjust to match your body master's panel assignment if needed.
 void doMarcduinoOpen(uint8_t panel) {
-  if (eStopActive) return;
   switch (panel) {
     case 0:
       Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
@@ -1363,7 +1223,6 @@ void doMarcduinoOpen(uint8_t panel) {
 }
 
 void doMarcduinoClose(uint8_t panel) {
-  if (eStopActive) return;
   switch (panel) {
     case 0:
       Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
@@ -1447,66 +1306,41 @@ void doMarcduinoCommand(const char* cmd) {
   } else if (strncmp(cmd, "SE", 2) == 0) {
     switch (atoi(cmd + 2)) {
       case 0: resetServos(); break;
-      case 1: if (!eStopActive) Scream(); break;
+      case 1: Scream(); break;
     }
   }
 }
 
-// Drains available serial bytes into pendingLine. Returns true once a full
-// line (terminated by \n or \r) is sitting in pendingLine, null-terminated.
-// Shared by readSerial() (normal idle-time reads) and waitTime() (so ESTOP
-// can be seen and acted on while a sequence is mid-wait).
-bool pumpSerialLine() {
+void readSerial() {
+  static char buf[32];
   static uint8_t idx = 0;
 
   while (COMMAND_SERIAL.available()) {
     char c = COMMAND_SERIAL.read();
     if (c == '\n' || c == '\r') {
       if (idx > 0) {
-        pendingLine[idx] = '\0';
+        buf[idx] = '\0';
+        if (strncmp(buf, "BD:", 3) == 0) {
+          doCommand(buf + 3);
+        } else if (strncmp(buf, "CB", 2) == 0) {
+          doCBILEDCommand(atol(buf + 2));
+        } else if (strncmp(buf, "DP", 2) == 0) {
+          doDPLEDCommand(atol(buf + 2));
+        } else if (buf[0] == ':') {
+          doMarcduinoCommand(buf + 1);
+        }
         idx = 0;
-        return true;
       }
-    } else if (idx < sizeof(pendingLine) - 1) {
-      pendingLine[idx++] = c;
+    } else if (idx < sizeof(buf) - 1) {
+      buf[idx++] = c;
     }
-  }
-  return false;
-}
-
-// Routes one already-parsed command line to the right handler.
-void dispatchLine(const char* line) {
-  if (strncmp(line, "BD:", 3) == 0) {
-    doCommand(line + 3);
-  } else if (strncmp(line, "CB", 2) == 0) {
-    doCBILEDCommand(atol(line + 2));
-  } else if (strncmp(line, "DP", 2) == 0) {
-    doDPLEDCommand(atol(line + 2));
-  } else if (line[0] == ':') {
-    doMarcduinoCommand(line + 1);
-  }
-}
-
-void readSerial() {
-  if (pumpSerialLine()) {
-    dispatchLine(pendingLine);
-    pendingLine[0] = '\0';
   }
 }
 
 void doCommand(const char* cmd) {
+  loopTime = millis();
   DEBUG_PRINT(F("Serial command: "));
   DEBUG_PRINT_LN(cmd);
-
-  if (strcmp(cmd, "ESTOP") == 0) {
-    performEStop();
-    return;
-  }
-
-  if (eStopActive && strcmp(cmd, "RESET") != 0) {
-    DEBUG_PRINT_LN(F("Ignored - ESTOP latched, send RESET to clear"));
-    return;
-  }
 
   if (strcmp(cmd, "RESET") == 0) {
     DEBUG_PRINT_LN(F("Got reset message"));
@@ -1519,16 +1353,6 @@ void doCommand(const char* cmd) {
     RockMarch();
   } else if (strcmp(cmd, "THEME") == 0) {
     Theme();
-  } else if (strcmp(cmd, "BATTLEALARM") == 0) {
-    BattleAlarm();
-  } else if (strcmp(cmd, "CLONES") == 0) {
-    Clones();
-  } else if (strcmp(cmd, "DUEL") == 0) {
-    Duel();
-  } else if (strcmp(cmd, "LUKEJABBA") == 0) {
-    LukeJabba();
-  } else if (strcmp(cmd, "THRONE") == 0) {
-    Throne();
   } else if (strcmp(cmd, "CANTINA") == 0) {
     Cantina();
   } else if (strcmp(cmd, "SCREAM") == 0) {
@@ -1565,8 +1389,6 @@ void doCommand(const char* cmd) {
     heart();
   } else if (strcmp(cmd, "DISCO") == 0) {
     Disco();
-  } else if (strcmp(cmd, "FLUTTER") == 0) {
-    Flutter();
   } else {
     digitalWrite(STATUS_LED, LOW);
   }
