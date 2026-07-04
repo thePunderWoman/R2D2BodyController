@@ -24,6 +24,13 @@
 #define COMMAND_SERIAL Serial
 #define COMMAND_BAUD   9600
 
+// Jumping to address 0 restarts execution from the top of the program (same
+// as a fresh power-on), which re-runs setup() — and setup() always calls
+// resetServos(). Used by performEStop() as the only way out of its RESET
+// wait, so ESTOP never has to unwind back into whatever sequence it
+// interrupted.
+void (*softReset)(void) = 0;
+
 float vout = 0.0;       // for voltage out measured analog input
 int value = 0;          // used to hold the analog value coming out of the voltage divider
 float vin = 0.0;        // voltage calculated... since the divider allows for 15 volts
@@ -468,6 +475,66 @@ void alarm() {
 
   playImperialAlarm();
   digitalWrite(STATUS_LED, LOW);
+}
+
+//----------------------------------------------------------------------------
+//  E S T O P  —  emergency stop
+//----------------------------------------------------------------------------
+// Freezes every attached servo exactly where it is, right now, and then
+// blocks forever — no other command, sequence, or LED update runs again.
+// The only way out is "BD:RESET", which reboots the board (see softReset
+// above) rather than trying to resume whatever was interrupted. Never
+// returns.
+void performEStop() {
+  DEBUG_PRINT_LN(F("!!! ESTOP - freezing all servos in place !!!"));
+
+  for (uint8_t i = 0; i < NBR_SERVOS; i++) {
+    if (Servos[i].attached()) {
+      Servos[i].stop(); // holds current position under power, does not detach
+    }
+  }
+
+  digitalWrite(STATUS_LED, HIGH); // solid on = estopped; send RESET to clear
+
+  char buf[16];
+  uint8_t idx = 0;
+  while (true) {
+    if (COMMAND_SERIAL.available()) {
+      char c = COMMAND_SERIAL.read();
+      if (c == '\n' || c == '\r') {
+        if (idx > 0) {
+          buf[idx] = '\0';
+          idx = 0;
+          if (strcmp(buf, "BD:RESET") == 0) softReset();
+        }
+      } else if (idx < sizeof(buf) - 1) {
+        buf[idx++] = c;
+      }
+    }
+  }
+}
+
+// Watches for "BD:ESTOP" arriving mid-sequence, using its own local buffer —
+// deliberately separate from readSerial()'s, so this can't affect the
+// timing of any other command. Any other completed line seen here is just
+// discarded; ESTOP needs to be instant, everything else can wait its turn.
+bool checkForEstop() {
+  static char buf[16];
+  static uint8_t idx = 0;
+
+  while (COMMAND_SERIAL.available()) {
+    char c = COMMAND_SERIAL.read();
+    if (c == '\n' || c == '\r') {
+      if (idx > 0) {
+        buf[idx] = '\0';
+        idx = 0;
+        if (strcmp(buf, "BD:ESTOP") == 0) return true;
+      }
+    } else if (idx < sizeof(buf) - 1) {
+      buf[idx++] = c;
+    }
+  }
+  return false;
 }
 
 //----------------------------------------------------------------------------
@@ -1198,7 +1265,9 @@ void waitTime(unsigned long duration)
 {
   unsigned long endTime = millis() + duration;
   while (millis() < endTime)
-  {}// do nothing
+  {
+    if (checkForEstop()) performEStop(); // never returns
+  }
 }
 
 // Serial Command Functions
@@ -1425,7 +1494,9 @@ void doCommand(const char* cmd) {
   DEBUG_PRINT(F("Serial command: "));
   DEBUG_PRINT_LN(cmd);
 
-  if (strcmp(cmd, "RESET") == 0) {
+  if (strcmp(cmd, "ESTOP") == 0) {
+    performEStop(); // never returns
+  } else if (strcmp(cmd, "RESET") == 0) {
     DEBUG_PRINT_LN(F("Got reset message"));
     resetServos();
     resetVocalizer();
