@@ -56,6 +56,9 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 #define BOTTOM_UTIL_ARM 4
 #define TOP_UTIL_ARM 5
 
+#define FIRST_SERVO_PIN 2 //First Arduino Pin for Servos
+#define NEUTRAL 90 //Start/Neutral/Center Position of our servos
+
 //Servo Speeds
 #define UTILITYARMSSPEED 100 // servo speed for opening utility arms. 1=super slow, 255=fastest
 #define UTILITYARMSSPEED2 45 // servo speed for opening utility arms. 1=super slow, 255=fastest
@@ -67,10 +70,6 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 #define SCREAM_SPEED 250
 
 #define OVERLOAD_DRIFT_SPEED 30
-
-#define FLUTTER_SPEED 150       // servo speed for the flutter wave open/close
-#define FLUTTER_STAGGER_MS 120  // delay between each door starting its move, right to left
-#define FLUTTER_HOLD_MS 500     // how long doors hold halfway open before closing wave
 
 //Tweaked Pulse Widths. Usually 1000-2000 or 500-2500
 #define ARMMINPULSE 600
@@ -116,6 +115,11 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 //#define TWELVE // Uncomment if you have a 12v system
 // #define EIGHTEEN //Uncomment if you have an 18v system
 #define TWENTYFOUR //Uncomment if you have a 24v system
+
+// If your JEDI Device can send at 9600 baud, uncomment this line.
+// The Current Teeces interface runs at a mindnumbingly slow 2400 only!
+
+#define _9600BAUDSJEDI_
 
 // Uncomment this if you want Debug output.
 #define DEBUG
