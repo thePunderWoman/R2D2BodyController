@@ -39,11 +39,7 @@
 
 
 
-// Create an array of VarSpeedServo type, containing 7 elements/entries.
-// Note: Arrays are zero indexed. See http://arduino.cc/en/Reference/array
-
 #define NBR_SERVOS 6  // Number of Servos
-VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 
 // More easy names  so we can reference the array element/row by name instead
 // trying to remember the number.
@@ -87,6 +83,45 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 
 #define DATA_DOOR_MINPULSE 2200
 #define DATA_DOOR_MAXPULSE 650
+
+// ---------------------------------------------------------
+// ReelTwo ServoDispatch setup
+// ---------------------------------------------------------
+// Replaces VarSpeedServo: ServoDispatchDirect drives all 6 channels off the
+// same Timer1 ISR technique VarSpeedServo used, but has no attach()/detach()
+// step - it attaches on the first move and auto-detaches ~500ms after a move
+// settles. Servo moves only advance while AnimatedEvent::process() is being
+// pumped (see loop() and waitTime()); it is not interrupt-driven like
+// VarSpeedServo's slew was.
+#include "ReelTwo.h"
+#include "ServoDispatchDirect.h"
+
+// pin, start (attach-time "min") pulse, end (attach-time "max") pulse, group (unused here)
+const ServoSettings servoSettings[NBR_SERVOS] PROGMEM = {
+  { LEFT_DOOR_SERVO_PIN,       LEFT_DOOR_MINPULSE,       LEFT_DOOR_MAXPULSE,       0 }, // 0: LEFT_DOOR
+  { RIGHT_DOOR_SERVO_PIN,      RIGHT_DOOR_MINPULSE,      RIGHT_DOOR_MAXPULSE,      0 }, // 1: RIGHT_DOOR
+  { CBI_DOOR_SERVO_PIN,        CBI_DOOR_MINPULSE,        CBI_DOOR_MAXPULSE,        0 }, // 2: CBI_DOOR
+  { DATA_DOOR_SERVO_PIN,       DATA_DOOR_MINPULSE,       DATA_DOOR_MAXPULSE,       0 }, // 3: DATA_DOOR
+  { BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE,              ARMMAXPULSE,              0 }, // 4: BOTTOM_UTIL_ARM
+  { TOP_UTIL_ARM_SERVO_PIN,    ARMMINPULSE,              ARMMAXPULSE,              0 }, // 5: TOP_UTIL_ARM
+};
+
+ServoDispatchDirect<NBR_SERVOS> Servos(servoSettings);
+
+// VarSpeedServo's write(pos, speed) took a 0-255 rate; ServoDispatch's
+// moveToPulse() takes an explicit duration instead. This reproduces the old
+// rate's timing (derived from VarSpeedServo's tick-per-refresh algorithm:
+// ticks change by `speed` every 20ms REFRESH_INTERVAL, 1 tick = 0.5us on a
+// 16MHz AVR, so duration_ms = distance_us * 40 / speed). Treat this as a
+// rough starting point, not gospel - retune the SPEED constants in this file
+// by feel once this is running on the actual body.
+static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
+{
+  uint16_t from = Servos.currentPos(servoIndex);
+  uint16_t distance = (from > pos) ? (from - pos) : (pos - from);
+  uint32_t duration = (speed == 0) ? 0 : (uint32_t)distance * 40UL / speed;
+  Servos.moveToPulse(servoIndex, duration, pos);
+}
 
 //Servo Positions
 #define TOP_ARM_OPEN 650
@@ -175,6 +210,9 @@ VarSpeedServo Servos[NBR_SERVOS]; // An Array of Servos, numbered 0 thru 5.
 #endif
 
 //Setup Debug Switch
+// ReelTwo.h (included above) also defines DEBUG_PRINT as a no-op; undef it
+// first so ours wins without a macro-redefinition warning.
+#undef DEBUG_PRINT
 #ifdef DEBUG
 #define DEBUG_PRINT_LN(msg)  Serial.println(msg)
 #define DEBUG_PRINT(msg)  Serial.print(msg)

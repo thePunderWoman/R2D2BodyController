@@ -12,10 +12,6 @@
 //V1.8 Integrated HCR Vocalizer APIs
 // -------------------------------------------------
 
-//Variable Speed Servo Library with sequencing ability
-//https://github.com/netlabtoolkit/VarSpeedServo
-#include <VarSpeedServo.h>
-
 #include <LedControl.h>
 #include "config.h"
 #include <hcr.h>
@@ -61,6 +57,9 @@ HCRVocalizer HCR(&Serial,9600);
 
 void setup()
 {
+  REELTWO_READY();
+  SetupEvent::ready();
+
   COMMAND_SERIAL.begin(COMMAND_BAUD);
 
   // initialize Maxim driver chips
@@ -103,6 +102,8 @@ void setup()
 }
 
 void loop() {
+  AnimatedEvent::process(); // advances any in-flight servo moves
+
   if (digitalRead(CBI_SWITCH_PIN) == LOW)
   {
     lc.shutdown(CBI, true);
@@ -337,52 +338,38 @@ void Cantina() {
   digitalWrite(CBI_SWITCH_PIN, HIGH);
   digitalWrite(DP_SWITCH_PIN, HIGH);
 
-  Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN,     LEFT_DOOR_MINPULSE,   LEFT_DOOR_MAXPULSE);
-  Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN,     DATA_DOOR_MINPULSE,   DATA_DOOR_MAXPULSE);
-  Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN,       CBI_DOOR_MINPULSE,    CBI_DOOR_MAXPULSE);
-  Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN,   RIGHT_DOOR_MINPULSE,  RIGHT_DOOR_MAXPULSE);
-  Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN,       ARMMINPULSE, ARMMAXPULSE);
-  Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
   bool evenOpen = true;
   unsigned long endTime = millis() + DURATION;
 
   while (millis() < endTime) {
     if (evenOpen) {
-      Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN,    CANTINA_SPEED);
-      Servos[DATA_DOOR].write(DATA_DOOR_CLOSE,   CANTINA_SPEED);
-      Servos[CBI_DOOR].write(CBI_DOOR_OPEN,      CANTINA_SPEED);
-      Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE,  CANTINA_SPEED);
-      Servos[TOP_UTIL_ARM].write(TOP_ARM_HALF,    CANTINA_SPEED);
-      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, CANTINA_SPEED);
+      moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, CANTINA_SPEED);
+      moveServo(DATA_DOOR, DATA_DOOR_CLOSE, CANTINA_SPEED);
+      moveServo(CBI_DOOR, CBI_DOOR_OPEN, CANTINA_SPEED);
+      moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, CANTINA_SPEED);
+      moveServo(TOP_UTIL_ARM, TOP_ARM_HALF, CANTINA_SPEED);
+      moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, CANTINA_SPEED);
     } else {
-      Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE,   CANTINA_SPEED);
-      Servos[DATA_DOOR].write(DATA_DOOR_OPEN,    CANTINA_SPEED);
-      Servos[CBI_DOOR].write(CBI_DOOR_CLOSE,     CANTINA_SPEED);
-      Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN,   CANTINA_SPEED);
-      Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE,   CANTINA_SPEED);
-      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_HALF, CANTINA_SPEED);
+      moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, CANTINA_SPEED);
+      moveServo(DATA_DOOR, DATA_DOOR_OPEN, CANTINA_SPEED);
+      moveServo(CBI_DOOR, CBI_DOOR_CLOSE, CANTINA_SPEED);
+      moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, CANTINA_SPEED);
+      moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, CANTINA_SPEED);
+      moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_HALF, CANTINA_SPEED);
     }
     evenOpen = !evenOpen;
     waitTime(BEAT_MS);
   }
 
   // Close everything and clean up
-  Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE,       DOOR_CLOSE_SPEED);
-  Servos[DATA_DOOR].write(DATA_DOOR_CLOSE,       DOOR_CLOSE_SPEED);
-  Servos[CBI_DOOR].write(CBI_DOOR_CLOSE,         DOOR_CLOSE_SPEED);
-  Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE,     DOOR_CLOSE_SPEED);
-  Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE,      UTILITYARMSSPEED);
-  Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+  moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED);
+  moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
 
   waitTime(1000);
-
-  Servos[LEFT_DOOR].detach();
-  Servos[DATA_DOOR].detach();
-  Servos[CBI_DOOR].detach();
-  Servos[RIGHT_DOOR].detach();
-  Servos[TOP_UTIL_ARM].detach();
-  Servos[BOTTOM_UTIL_ARM].detach();
 
   digitalWrite(CBI_SWITCH_PIN, LOW);
   digitalWrite(DP_SWITCH_PIN, LOW);
@@ -409,9 +396,6 @@ void overload() {
 
   const uint8_t NUM_PANELS = 6;
   const uint8_t panels[]    = { TOP_UTIL_ARM,      BOTTOM_UTIL_ARM,      LEFT_DOOR,          RIGHT_DOOR,          CBI_DOOR,          DATA_DOOR          };
-  const int panelPin[]      = { TOP_UTIL_ARM_SERVO_PIN, BOTTOM_UTIL_ARM_SERVO_PIN, LEFT_DOOR_SERVO_PIN, RIGHT_DOOR_SERVO_PIN, CBI_DOOR_SERVO_PIN, DATA_DOOR_SERVO_PIN };
-  const int panelMinPulse[] = { ARMMINPULSE,        ARMMINPULSE,          LEFT_DOOR_MINPULSE, RIGHT_DOOR_MINPULSE, CBI_DOOR_MINPULSE, DATA_DOOR_MINPULSE };
-  const int panelMaxPulse[] = { ARMMAXPULSE,        ARMMAXPULSE,          LEFT_DOOR_MAXPULSE, RIGHT_DOOR_MAXPULSE, CBI_DOOR_MAXPULSE, DATA_DOOR_MAXPULSE };
   const int panelOpen[]     = { TOP_ARM_OPEN,       BOTTOM_ARM_OPEN,      LEFT_DOOR_OPEN,     RIGHT_DOOR_OPEN,     CBI_DOOR_OPEN,     DATA_DOOR_OPEN     };
   const int panelClose[]    = { TOP_ARM_CLOSE,      BOTTOM_ARM_CLOSE,     LEFT_DOOR_CLOSE,    RIGHT_DOOR_CLOSE,    CBI_DOOR_CLOSE,    DATA_DOOR_CLOSE    };
 
@@ -423,10 +407,6 @@ void overload() {
   }
   uint8_t count = random(2, 4); // 2 or 3 panels
 
-  for (uint8_t i = 0; i < count; i++) {
-    Servos[panels[order[i]]].attach(panelPin[order[i]], panelMinPulse[order[i]], panelMaxPulse[order[i]]);
-  }
-
   digitalWrite(CBI_SWITCH_PIN, HIGH);
   digitalWrite(DP_SWITCH_PIN, HIGH);
   digitalWrite(VM_SWITCH_PIN, HIGH);
@@ -436,7 +416,7 @@ void overload() {
   for (uint8_t i = 0; i < count; i++) {
     uint8_t pi = order[i];
     int pos = panelClose[pi] + (long)(panelOpen[pi] - panelClose[pi]) * random(10, 51) / 100;
-    Servos[panels[pi]].write(pos, OVERLOAD_DRIFT_SPEED);
+    moveServo(panels[pi], pos, OVERLOAD_DRIFT_SPEED);
     waitTime(random(400, 900));
   }
 
@@ -444,7 +424,7 @@ void overload() {
 
   // Snap closed
   for (uint8_t i = 0; i < count; i++) {
-    Servos[panels[order[i]]].write(panelClose[order[i]], SCREAM_SPEED);
+    moveServo(panels[order[i]], panelClose[order[i]], SCREAM_SPEED);
   }
 
   digitalWrite(CBI_SWITCH_PIN, LOW);
@@ -452,10 +432,6 @@ void overload() {
   digitalWrite(VM_SWITCH_PIN, LOW);
 
   waitTime(800);
-
-  for (uint8_t i = 0; i < count; i++) {
-    Servos[panels[order[i]]].detach();
-  }
 
   doorsOpen = false;
   leftDoorOpen = false;
@@ -488,11 +464,10 @@ void alarm() {
 void performEStop() {
   DEBUG_PRINT_LN(F("!!! ESTOP - freezing all servos in place !!!"));
 
-  for (uint8_t i = 0; i < NBR_SERVOS; i++) {
-    if (Servos[i].attached()) {
-      Servos[i].stop(); // holds current position under power, does not detach
-    }
-  }
+  // ReelTwo servo moves only advance when AnimatedEvent::process() is pumped
+  // (see waitTime()). Since the wait loop below never calls it, every servo
+  // simply holds its last-commanded pulse under power, exactly where it was,
+  // for as long as this function blocks — no per-servo stop() needed.
 
   digitalWrite(STATUS_LED, HIGH); // solid on = estopped; send RESET to clear
 
@@ -558,21 +533,20 @@ void heart() {
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
   digitalWrite(CBI_SWITCH_PIN, HIGH);
-  Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
 
   showHeartLEDs();
 
   for (int i = 0; i < 3; i++) {
     // lift then snap shut — first thump; flash heart on the snap
-    Servos[CBI_DOOR].write(HEARTBEAT_LIFT_1, HEARTBEAT_SPEED);
+    moveServo(CBI_DOOR, HEARTBEAT_LIFT_1, HEARTBEAT_SPEED);
     waitTime(120);
-    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
     waitTime(100);
 
     // lift then snap shut — second thump (softer); flash heart on the snap
-    Servos[CBI_DOOR].write(HEARTBEAT_LIFT_2, HEARTBEAT_SPEED);
+    moveServo(CBI_DOOR, HEARTBEAT_LIFT_2, HEARTBEAT_SPEED);
     waitTime(100);
-    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_CLOSE, HEARTBEAT_SPEED);
 
     // pause between heartbeat pairs
     waitTime(700);
@@ -580,12 +554,10 @@ void heart() {
 
   stopHeartLEDs();
 
-  Servos[CBI_DOOR].detach();
   digitalWrite(CBI_SWITCH_PIN, LOW);
 
   digitalWrite(STATUS_LED, LOW);
 }
-
 
 //-----------------------------------------------------
 // Flutter Sequence
@@ -601,15 +573,8 @@ void Flutter() {
 
   // Right-to-left order across the body: RIGHT, CBI, DATA, LEFT
   const uint8_t doors[]    = { RIGHT_DOOR,           CBI_DOOR,           DATA_DOOR,           LEFT_DOOR           };
-  const int doorPin[]      = { RIGHT_DOOR_SERVO_PIN, CBI_DOOR_SERVO_PIN, DATA_DOOR_SERVO_PIN, LEFT_DOOR_SERVO_PIN };
-  const int doorMinPulse[] = { RIGHT_DOOR_MINPULSE,  CBI_DOOR_MINPULSE,  DATA_DOOR_MINPULSE,  LEFT_DOOR_MINPULSE  };
-  const int doorMaxPulse[] = { RIGHT_DOOR_MAXPULSE,  CBI_DOOR_MAXPULSE,  DATA_DOOR_MAXPULSE,  LEFT_DOOR_MAXPULSE  };
   const int doorHalf[]     = { RIGHT_DOOR_HALF,      CBI_DOOR_HALF,      DATA_DOOR_HALF,      LEFT_DOOR_HALF      };
   const int doorClose[]    = { RIGHT_DOOR_CLOSE,     CBI_DOOR_CLOSE,     DATA_DOOR_CLOSE,     LEFT_DOOR_CLOSE     };
-
-  for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].attach(doorPin[i], doorMinPulse[i], doorMaxPulse[i]);
-  }
 
   digitalWrite(CBI_SWITCH_PIN, HIGH);
   digitalWrite(DP_SWITCH_PIN, HIGH);
@@ -617,7 +582,7 @@ void Flutter() {
 
   // Wave open, right to left, each door lifting halfway
   for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].write(doorHalf[i], FLUTTER_SPEED);
+    moveServo(doors[i], doorHalf[i], FLUTTER_SPEED);
     waitTime(FLUTTER_STAGGER_MS);
   }
 
@@ -625,15 +590,11 @@ void Flutter() {
 
   // Wave close, right to left
   for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].write(doorClose[i], FLUTTER_SPEED);
+    moveServo(doors[i], doorClose[i], FLUTTER_SPEED);
     waitTime(FLUTTER_STAGGER_MS);
   }
 
   waitTime(500); // wait on last door to reach position
-
-  for (uint8_t i = 0; i < 4; i++) {
-    Servos[doors[i]].detach();
-  }
 
   digitalWrite(CBI_SWITCH_PIN, LOW);
   digitalWrite(DP_SWITCH_PIN, LOW);
@@ -655,37 +616,23 @@ void Flutter() {
 
 void resetServos() {
 
-  Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-  Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED3);
+  moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED3);
 
-  Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-  Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED3);
+  moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED3);
 
-  Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-  Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-  Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-  Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-  Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
   digitalWrite(CBI_SWITCH_PIN, LOW);
   digitalWrite(DP_SWITCH_PIN, LOW);
   digitalWrite(VM_SWITCH_PIN, LOW);
 
   waitTime(600); // wait on servos
-
-  // Detach from the servo to save power and reduce jitter
-  Servos[TOP_UTIL_ARM].detach();
-  Servos[BOTTOM_UTIL_ARM].detach();
-  Servos[LEFT_DOOR].detach();
-  Servos[RIGHT_DOOR].detach();
-  Servos[CBI_DOOR].detach();
-  Servos[DATA_DOOR].detach();
 
   doorsOpen = false;
   leftDoorOpen = false;
@@ -710,37 +657,23 @@ void openEverything() {
     resetServos();
 
   } else { //Open everything
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED2);
+    moveServo(TOP_UTIL_ARM, TOP_ARM_OPEN, UTILITYARMSSPEED2);
 
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED2);
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_OPEN, UTILITYARMSSPEED2);
 
-    Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-    Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
 
-    Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
 
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     digitalWrite(CBI_SWITCH_PIN, HIGH);
     digitalWrite(DP_SWITCH_PIN, HIGH);
     digitalWrite(VM_SWITCH_PIN, HIGH);
 
     waitTime(1000); // wait on servos
-
-    // Detach from the servo to save power and reduce jitter
-    Servos[TOP_UTIL_ARM].detach();
-    Servos[BOTTOM_UTIL_ARM].detach();
-    Servos[LEFT_DOOR].detach();
-    Servos[RIGHT_DOOR].detach();
-    Servos[CBI_DOOR].detach();
-    Servos[DATA_DOOR].detach();
 
     doorsOpen = true;
     leftDoorOpen = true;
@@ -774,42 +707,28 @@ void UtilityArms() {
     topUtilityArmOpen = false;
     bottomUtilityArmOpen = false;
 
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+    moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED);
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[TOP_UTIL_ARM].detach(); // detach so we can move the arms freely
-    Servos[BOTTOM_UTIL_ARM].detach();
 
   } else if (topUtilityArmOpen) { //if top arm is open, open bottom
     DEBUG_PRINT_LN(F("Open bottom arm"));
     utilityArmOpen = true;
     bottomUtilityArmOpen = true;
 
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[BOTTOM_UTIL_ARM].detach();
 
   } else if (bottomUtilityArmOpen) { //if bottom arm is open, open top
     DEBUG_PRINT_LN(F("Open top arm"));
     utilityArmOpen = true;
     topUtilityArmOpen = true;
 
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED);
+    moveServo(TOP_UTIL_ARM, TOP_ARM_OPEN, UTILITYARMSSPEED);
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[TOP_UTIL_ARM].detach();
 
   } else { // Open both arms if closed
     DEBUG_PRINT_LN(F("Open utility arms"));
@@ -817,16 +736,11 @@ void UtilityArms() {
     topUtilityArmOpen = true;
     bottomUtilityArmOpen = true;
 
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED);
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
+    moveServo(TOP_UTIL_ARM, TOP_ARM_OPEN, UTILITYARMSSPEED);
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
 
     waitTime(1000);  // wait on arm to reach position
 
-    Servos[TOP_UTIL_ARM].detach(); // detach so we can move the arms freely
-    Servos[BOTTOM_UTIL_ARM].detach();
   }
 
   digitalWrite(STATUS_LED, LOW);
@@ -844,40 +758,28 @@ void TopUtilityArm() {
     bottomUtilityArmOpen = false;
     utilityArmOpen = false;
 
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
     // pull arms slightly beyond closed to make sure they're really closed. Will vary on your droid
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[BOTTOM_UTIL_ARM].detach();
 
   } else if (topUtilityArmOpen) { // If the top arm is open, close it
     DEBUG_PRINT_LN(F("Close top utility arm"));
     topUtilityArmOpen = false;
 
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
     // Set Servo position to Close.
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED); // close at moderate speed
+    moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED); // close at moderate speed
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[TOP_UTIL_ARM].detach(); // detach so we can move the arms freely
 
   } else { // Open the Top Arm Only
     DEBUG_PRINT_LN(F("Open top utility arm"));
     topUtilityArmOpen = true;
 
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
     // Set Servo position to Open.
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED); // open at moderate speed
+    moveServo(TOP_UTIL_ARM, TOP_ARM_OPEN, UTILITYARMSSPEED); // open at moderate speed
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[TOP_UTIL_ARM].detach(); // detach so we can move the arms freely
 
   }
 
@@ -896,40 +798,28 @@ void BottomUtilityArm() {
     bottomUtilityArmOpen = true;
     utilityArmOpen = false;
 
-    Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
     // pull arms slightly beyond closed to make sure they're really closed. Will vary on your droid
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
+    moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED);
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[TOP_UTIL_ARM].detach();
 
   } else if (bottomUtilityArmOpen) { // If the bottom arm is open, close it
     DEBUG_PRINT_LN(F("Close bottom utility arm"));
     bottomUtilityArmOpen = false;
 
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
     // Set Servo position to Close.
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED); // close at moderate speed
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED); // close at moderate speed
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[BOTTOM_UTIL_ARM].detach(); // detach so we can move the arms freely
 
   } else { // Open the Bottom Arm Only
     DEBUG_PRINT_LN(F("Open bottom utility arm"));
     bottomUtilityArmOpen = true;
 
-    Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-
     // Set Servo position to Open.
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED); // open at moderate speed
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_OPEN, UTILITYARMSSPEED); // open at moderate speed
 
     waitTime(1000);  // wait on arm to reach position
-
-    Servos[BOTTOM_UTIL_ARM].detach(); // detach so we can move the arms freely
 
   }
 
@@ -944,12 +834,6 @@ void Scream() {
   digitalWrite(STATUS_LED, HIGH);
 
   playScream();
-  Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-  Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-  Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-  Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-  Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-  Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
 
   digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
   digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
@@ -958,25 +842,25 @@ void Scream() {
 
     DEBUG_PRINT(F("Loop:"));
     DEBUG_PRINT_LN(i + 1);
-    Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, SCREAM_SPEED);
-    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, SCREAM_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, SCREAM_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_OPEN, SCREAM_SPEED);
 
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, SCREAM_SPEED);
-    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, SCREAM_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, SCREAM_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_CLOSE, SCREAM_SPEED);
 
-    Servos[TOP_UTIL_ARM].write(1250, 255);
-    Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, 255);
+    moveServo(TOP_UTIL_ARM, 1250, 255);
+    moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, 255);
 
     waitTime(150);
 
-    Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, SCREAM_SPEED);
-    Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, SCREAM_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, SCREAM_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_CLOSE, SCREAM_SPEED);
 
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, SCREAM_SPEED);
-    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, SCREAM_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, SCREAM_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_OPEN, SCREAM_SPEED);
 
-    Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, 255); // open at moderate speed
-    Servos[BOTTOM_UTIL_ARM].write(1250, 255); // 0=open all the way
+    moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, 255); // open at moderate speed
+    moveServo(BOTTOM_UTIL_ARM, 1250, 255); // 0=open all the way
 
     waitTime(150);
 
@@ -984,27 +868,18 @@ void Scream() {
 
   DEBUG_PRINT_LN(F("Close everything"));
 
-  Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
-  Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
-  Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-  Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-  Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-  Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED);
+  moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+  moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+  moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
   digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
   digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
   digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
 
   waitTime(1000); // wait on arm to reach position
-
-  DEBUG_PRINT_LN(F("Detach"));
-
-  Servos[LEFT_DOOR].detach();
-  Servos[RIGHT_DOOR].detach();
-  Servos[CBI_DOOR].detach();
-  Servos[DATA_DOOR].detach();
-  Servos[TOP_UTIL_ARM].detach();
-  Servos[BOTTOM_UTIL_ARM].detach();
 
   doorsOpen = false;
   leftDoorOpen = false;
@@ -1042,26 +917,16 @@ void Doors() {
     dataDoorOpen = false;
     cbi_dataOpen = false;
 
-    Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-    Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-
-    Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-    Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
     digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
     digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
 
     waitTime(1000); // wait on arm to reach position
-
-    Servos[LEFT_DOOR].detach();
-    Servos[RIGHT_DOOR].detach();
-    Servos[CBI_DOOR].detach();
-    Servos[DATA_DOOR].detach();
 
   } else {
     DEBUG_PRINT_LN(F("Open doors"));
@@ -1076,22 +941,12 @@ void Doors() {
     digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
     digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
-    Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-    Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-
-    Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
-    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
-    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
-
-    Servos[LEFT_DOOR].detach();
-    Servos[RIGHT_DOOR].detach();
-    Servos[CBI_DOOR].detach();
-    Servos[DATA_DOOR].detach();
 
   }
 
@@ -1105,18 +960,14 @@ void openLeftDoor() {
   if (leftDoorOpen) {
     DEBUG_PRINT_LN(F("Close Left Door"));
     leftDoorOpen = false;
-    Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-    Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     waitTime(1000); // wait on door to reach position
-    Servos[LEFT_DOOR].detach();
 
   } else {
     leftDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Left Door"));
-    Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-    Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
     waitTime(1000);
-    Servos[LEFT_DOOR].detach();
   }
 
   digitalWrite(STATUS_LED, LOW);
@@ -1128,18 +979,14 @@ void openRightDoor() {
   if (rightDoorOpen) {
     DEBUG_PRINT_LN(F("Close Right Door"));
     rightDoorOpen = false;
-    Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     waitTime(1000); // wait on door to reach position
-    Servos[RIGHT_DOOR].detach();
 
   } else {
     rightDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Right Door"));
-    Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-    Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
     waitTime(1000);
-    Servos[RIGHT_DOOR].detach();
   }
 
   digitalWrite(STATUS_LED, LOW);
@@ -1151,13 +998,11 @@ void openCBIDoor() {
   if (cbiDoorOpen) {
     DEBUG_PRINT_LN(F("Close Charge Bay Door"));
     cbiDoorOpen = false;
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
 
     waitTime(1000); // wait on door to reach position
-    Servos[CBI_DOOR].detach();
 
   } else {
     cbiDoorOpen = true;
@@ -1165,11 +1010,9 @@ void openCBIDoor() {
 
     digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
 
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
-    Servos[CBI_DOOR].detach();
   }
 
   digitalWrite(STATUS_LED, LOW);
@@ -1181,14 +1024,12 @@ void openDataDoor() {
   if (dataDoorOpen) {
     DEBUG_PRINT_LN(F("Close Data Port Door"));
     dataDoorOpen = false;
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
     digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
 
     waitTime(1000); // wait on door to reach position
-    Servos[DATA_DOOR].detach();
 
   } else {
     dataDoorOpen = true;
@@ -1197,11 +1038,9 @@ void openDataDoor() {
     digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
     digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
-    Servos[DATA_DOOR].detach();
   }
 
   digitalWrite(STATUS_LED, LOW);
@@ -1220,19 +1059,15 @@ void openCBI_DataDoor() {
     cbi_dataOpen = false;
     cbiDoorOpen = false;
     dataDoorOpen = false;
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
 
-    Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-    Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
     digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
     digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
 
     waitTime(1000); // wait on door to reach position
-    Servos[CBI_DOOR].detach();
-    Servos[DATA_DOOR].detach();
 
   } else {
     cbi_dataOpen = true;
@@ -1244,15 +1079,10 @@ void openCBI_DataDoor() {
     digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
     digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
-    Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-    Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-
-    Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
-    Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+    moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
-    Servos[CBI_DOOR].detach();
-    Servos[DATA_DOOR].detach();
   }
 
   digitalWrite(STATUS_LED, LOW);
@@ -1267,6 +1097,7 @@ void waitTime(unsigned long duration)
   while (millis() < endTime)
   {
     if (checkForEstop()) performEStop(); // never returns
+    AnimatedEvent::process(); // ReelTwo moves only advance while this is pumped
   }
 }
 
@@ -1302,25 +1133,16 @@ void doDPLEDCommand(long val) {
 void doMarcduinoOpen(uint8_t panel) {
   switch (panel) {
     case 0:
-      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-      Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED2);
-      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED2);
-      Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
-      Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
-      Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
-      Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+      moveServo(TOP_UTIL_ARM, TOP_ARM_OPEN, UTILITYARMSSPEED2);
+      moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_OPEN, UTILITYARMSSPEED2);
+      moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+      moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
       digitalWrite(CBI_SWITCH_PIN, HIGH);
       digitalWrite(DP_SWITCH_PIN, HIGH);
       digitalWrite(VM_SWITCH_PIN, HIGH);
       waitTime(900);
-      Servos[TOP_UTIL_ARM].detach(); Servos[BOTTOM_UTIL_ARM].detach();
-      Servos[LEFT_DOOR].detach(); Servos[RIGHT_DOOR].detach();
-      Servos[CBI_DOOR].detach(); Servos[DATA_DOOR].detach();
       topUtilityArmOpen = true; bottomUtilityArmOpen = true; utilityArmOpen = true;
       leftDoorOpen = true; rightDoorOpen = true;
       cbiDoorOpen = true; dataDoorOpen = true;
@@ -1329,47 +1151,41 @@ void doMarcduinoOpen(uint8_t panel) {
     case 1:
       if (topUtilityArmOpen) return;
       topUtilityArmOpen = true;
-      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[TOP_UTIL_ARM].write(TOP_ARM_OPEN, UTILITYARMSSPEED);
-      waitTime(900); Servos[TOP_UTIL_ARM].detach();
+      moveServo(TOP_UTIL_ARM, TOP_ARM_OPEN, UTILITYARMSSPEED);
+      waitTime(900);
       break;
     case 2:
       if (bottomUtilityArmOpen) return;
       bottomUtilityArmOpen = true;
-      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
-      waitTime(900); Servos[BOTTOM_UTIL_ARM].detach();
+      moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_OPEN, UTILITYARMSSPEED);
+      waitTime(900);
       break;
     case 3:
       if (leftDoorOpen) return;
       leftDoorOpen = true;
-      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-      Servos[LEFT_DOOR].write(LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
-      waitTime(900); Servos[LEFT_DOOR].detach();
+      moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900);
       break;
     case 4:
       if (rightDoorOpen) return;
       rightDoorOpen = true;
-      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-      Servos[RIGHT_DOOR].write(RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
-      waitTime(900); Servos[RIGHT_DOOR].detach();
+      moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900);
       break;
     case 5:
       if (cbiDoorOpen) return;
       cbiDoorOpen = true;
       digitalWrite(CBI_SWITCH_PIN, HIGH);
-      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-      Servos[CBI_DOOR].write(CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
-      waitTime(900); Servos[CBI_DOOR].detach();
+      moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900);
       break;
     case 6:
       if (dataDoorOpen) return;
       dataDoorOpen = true;
       digitalWrite(DP_SWITCH_PIN, HIGH);
       digitalWrite(VM_SWITCH_PIN, HIGH);
-      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-      Servos[DATA_DOOR].write(DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
-      waitTime(900); Servos[DATA_DOOR].detach();
+      moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
+      waitTime(900);
       break;
   }
 }
@@ -1377,25 +1193,16 @@ void doMarcduinoOpen(uint8_t panel) {
 void doMarcduinoClose(uint8_t panel) {
   switch (panel) {
     case 0:
-      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-      Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
-      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
-      Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED);
+      moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+      moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       digitalWrite(CBI_SWITCH_PIN, LOW);
       digitalWrite(DP_SWITCH_PIN, LOW);
       digitalWrite(VM_SWITCH_PIN, LOW);
       waitTime(900);
-      Servos[TOP_UTIL_ARM].detach(); Servos[BOTTOM_UTIL_ARM].detach();
-      Servos[LEFT_DOOR].detach(); Servos[RIGHT_DOOR].detach();
-      Servos[CBI_DOOR].detach(); Servos[DATA_DOOR].detach();
       topUtilityArmOpen = false; bottomUtilityArmOpen = false; utilityArmOpen = false;
       leftDoorOpen = false; rightDoorOpen = false;
       cbiDoorOpen = false; dataDoorOpen = false;
@@ -1404,47 +1211,41 @@ void doMarcduinoClose(uint8_t panel) {
     case 1:
       if (!topUtilityArmOpen) return;
       topUtilityArmOpen = false;
-      Servos[TOP_UTIL_ARM].attach(TOP_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[TOP_UTIL_ARM].write(TOP_ARM_CLOSE, UTILITYARMSSPEED);
-      waitTime(900); Servos[TOP_UTIL_ARM].detach();
+      moveServo(TOP_UTIL_ARM, TOP_ARM_CLOSE, UTILITYARMSSPEED);
+      waitTime(900);
       break;
     case 2:
       if (!bottomUtilityArmOpen) return;
       bottomUtilityArmOpen = false;
-      Servos[BOTTOM_UTIL_ARM].attach(BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE, ARMMAXPULSE);
-      Servos[BOTTOM_UTIL_ARM].write(BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
-      waitTime(900); Servos[BOTTOM_UTIL_ARM].detach();
+      moveServo(BOTTOM_UTIL_ARM, BOTTOM_ARM_CLOSE, UTILITYARMSSPEED);
+      waitTime(900);
       break;
     case 3:
       if (!leftDoorOpen) return;
       leftDoorOpen = false;
-      Servos[LEFT_DOOR].attach(LEFT_DOOR_SERVO_PIN, LEFT_DOOR_MINPULSE, LEFT_DOOR_MAXPULSE);
-      Servos[LEFT_DOOR].write(LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      waitTime(900); Servos[LEFT_DOOR].detach();
+      moveServo(LEFT_DOOR, LEFT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      waitTime(900);
       break;
     case 4:
       if (!rightDoorOpen) return;
       rightDoorOpen = false;
-      Servos[RIGHT_DOOR].attach(RIGHT_DOOR_SERVO_PIN, RIGHT_DOOR_MINPULSE, RIGHT_DOOR_MAXPULSE);
-      Servos[RIGHT_DOOR].write(RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      waitTime(900); Servos[RIGHT_DOOR].detach();
+      moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      waitTime(900);
       break;
     case 5:
       if (!cbiDoorOpen) return;
       cbiDoorOpen = false;
-      Servos[CBI_DOOR].attach(CBI_DOOR_SERVO_PIN, CBI_DOOR_MINPULSE, CBI_DOOR_MAXPULSE);
-      Servos[CBI_DOOR].write(CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       digitalWrite(CBI_SWITCH_PIN, LOW);
-      waitTime(900); Servos[CBI_DOOR].detach();
+      waitTime(900);
       break;
     case 6:
       if (!dataDoorOpen) return;
       dataDoorOpen = false;
-      Servos[DATA_DOOR].attach(DATA_DOOR_SERVO_PIN, DATA_DOOR_MINPULSE, DATA_DOOR_MAXPULSE);
-      Servos[DATA_DOOR].write(DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
+      moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       digitalWrite(DP_SWITCH_PIN, LOW);
       digitalWrite(VM_SWITCH_PIN, LOW);
-      waitTime(900); Servos[DATA_DOOR].detach();
+      waitTime(900);
       break;
   }
 }
@@ -1587,7 +1388,6 @@ void singleTest()
       }
     }
   }
-
 
   for (int row = 0; row < 4; row++)
   {
@@ -1829,7 +1629,6 @@ void updateBlueLEDs()
   // random
   lc.setRow(DATAPORT, 0, randomRow(4));
 }
-
 
 void getVCC()
 {
