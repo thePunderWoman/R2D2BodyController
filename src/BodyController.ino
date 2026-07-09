@@ -1,35 +1,22 @@
-// CMB Servo Expander Body v 1.8
-// Based on Work by Chris James (v1.14) 3-10-2017
-// Based on work by Chris Bozzoli (DBoz) (v1.7)
-// Modified by Jessica Janiuk (thePunderWoman)
-//
-//v1.2 Added Individual Utility Arm Movement 7-10-18
-//v1.3 Replaced all delays with waitTime funciton 4-12-20
-//v1.4 Rearranged Switch/Case Numbers to align with Dome 4-21-20
-//v1.5 Removed Back Door code, renumbered servo pins, Added Open Everything Funciton 5-21-20
-//V1.6 Optimized I2C function 8-20-20
-//V1.7 Integrated CBI_DataPanel_SA_Breakout 1.0 code 2/24/21
-//V1.8 Integrated HCR Vocalizer APIs
-// -------------------------------------------------
+// Jessica's Astromech Body Controller Firmware
 
-#include <LedControl.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
 #include "config.h"
+#include "web_page.h"
 #include <hcr.h>
 
-// Serial command port — hardware Serial (the only port on a Pro Mini)
-#define COMMAND_SERIAL Serial
-#define COMMAND_BAUD   9600
+// Command bus — UART0, shared trunk for WCB commands in, HCR vocalizer
+// commands out, and RGB-DPL panel commands out (see sendPanelCommand()).
+#define COMMAND_SERIAL WCBSerial
 
-// Jumping to address 0 restarts execution from the top of the program (same
-// as a fresh power-on), which re-runs setup() — and setup() always calls
-// resetServos(). Used by performEStop() as the only way out of its RESET
-// wait, so ESTOP never has to unwind back into whatever sequence it
-// interrupted.
-void (*softReset)(void) = 0;
-
-float vout = 0.0;       // for voltage out measured analog input
-int value = 0;          // used to hold the analog value coming out of the voltage divider
-float vin = 0.0;        // voltage calculated... since the divider allows for 15 volts
+// ESP32 has no AVR-style "jump to address 0" reset vector; ESP.restart()
+// triggers a real chip reset, which re-runs setup() the same way — and
+// setup() always calls resetServos(). Used by performEStop() as the only
+// way out of its RESET wait, so ESTOP never has to unwind back into
+// whatever sequence it interrupted.
+void softReset() { ESP.restart(); }
 
 unsigned long loopTime; // Time variable
 
@@ -44,99 +31,37 @@ bool dataDoorOpen = false;
 bool doorsOpen = false;
 bool cbi_dataOpen = false;
 
-// LED animation modes for CB/DP serial commands: 0=normal, 1=disabled
-uint8_t cbiLEDMode = 0;
-uint8_t dpLEDMode  = 0;
-unsigned long cbiModeEnd = 0;  // millis() when to revert; 0 = no timeout
-unsigned long dpModeEnd  = 0;
-
-// Instantiate LedControl driver
-LedControl lc = LedControl(DATAIN_PIN, CLOCK_PIN, LOAD_PIN, NUMDEV);
-
-HCRVocalizer HCR(&Serial,9600);
+HCRVocalizer HCR(&WCBSerial, WCB_BAUD);
 
 void setup()
 {
-  REELTWO_READY();
-  SetupEvent::ready();
+  // Native USB CDC console (separate from the WCB/Maestro hardware UARTs).
+  // Its write() is a silent no-op until begin() initializes the CDC tx
+  // buffers, so without this every DEBUG_PRINT call vanishes with no error.
+  Serial.begin(9600);
+  unsigned long usbWaitStart = millis();
+  while (!Serial && millis() - usbWaitStart < 2000) { delay(10); } // give a monitor a moment to attach, but don't hang if unattended
 
-  COMMAND_SERIAL.begin(COMMAND_BAUD);
+  WCBSerial.begin(WCB_BAUD, SERIAL_8N1, WCB_RX_PIN, WCB_TX_PIN);
+  MaestroSerial.begin(MAESTRO_BAUD, SERIAL_8N1, MAESTRO_RX_PIN, MAESTRO_TX_PIN);
 
-  // initialize Maxim driver chips
-  lc.shutdown(DATAPORT, false);                 // take out of shutdown
-  lc.clearDisplay(DATAPORT);                    // clear
-  lc.setIntensity(DATAPORT, DATAPORTINTENSITY); // set intensity
-
-  lc.shutdown(CBI, false);                      // take out of shutdown
-  lc.clearDisplay(CBI);                         // clear
-  lc.setIntensity(CBI, CBIINTENSITY);           // set intensity
-
-#ifdef  TEST// test LEDs
-  singleTest();
-  waitTime(2000);
-#endif
-
-#ifndef monitorVCC
-  pinMode(analoginput, INPUT);
-#endif
-
-  DEBUG_PRINT_LN(F("Amidala RC - Body Controller v1.7 (3-17-21)"));
-
-  DEBUG_PRINT_LN(F("Command serial ready (Serial @ 9600)"));
+  DEBUG_PRINT_LN(F("Body Controller " FIRMWARE_VERSION " (" MCU_VARIANT ")"));
+  DEBUG_PRINT_LN(F("Command serial ready (UART0 @ 9600)"));
 
   pinMode(STATUS_LED, OUTPUT); // turn status led off
   digitalWrite(STATUS_LED, LOW);
 
-  pinMode(VM_SWITCH_PIN, OUTPUT); //Sets digital pin as an output
-  pinMode(CBI_SWITCH_PIN, OUTPUT); //Sets digital pin as an output
-  pinMode(DP_SWITCH_PIN, OUTPUT); //Sets digital pin as an output
-
-  digitalWrite(CBI_SWITCH_PIN, LOW); //Sets output of digital pin low to turn off lights
-  digitalWrite(DP_SWITCH_PIN, LOW);
-  digitalWrite(VM_SWITCH_PIN, LOW);
-
   DEBUG_PRINT(F("Activating Servos"));
   resetServos();
-  
+
+  startOTAWebServer(); // WiFi AP + mDNS + /update, see web_page.h
+
   DEBUG_PRINT_LN(F("Setup Complete"));
 }
 
 void loop() {
-  AnimatedEvent::process(); // advances any in-flight servo moves
-
-  if (digitalRead(CBI_SWITCH_PIN) == LOW)
-  {
-    lc.shutdown(CBI, true);
-  }
-  else
-  {
-    lc.shutdown(CBI, false);
-  }
-  if (digitalRead(DP_SWITCH_PIN) == LOW)
-  {
-    lc.shutdown(DATAPORT, true);
-  }
-  else
-  {
-    lc.shutdown(DATAPORT, false);
-  }
-
-  if (cbiModeEnd && millis() >= cbiModeEnd) { cbiLEDMode = 0; cbiModeEnd = 0; }
-  if (dpModeEnd  && millis() >= dpModeEnd)  { dpLEDMode  = 0; dpModeEnd  = 0; }
-
-  // this is the new code. Every block of LEDs is handled independently
-  updateTopBlocks();
-  bargraphDisplay(0);
-  updatebottomLEDs();
-  updateRedLEDs();
-  updateCBILEDs();
-#ifdef monitorVCC
-  getVCC();
-#endif
-#ifndef BLUELEDTRACKGRAPH
-  updateBlueLEDs();
-#endif
   readSerial();
+  webServer.handleClient();
 }
 
 //----------------------------------------------------------------------------
@@ -335,8 +260,7 @@ void Cantina() {
   const int TOP_ARM_HALF   = (TOP_ARM_OPEN    + TOP_ARM_CLOSE)    / 2; // ~1215
   const int BOTTOM_ARM_HALF = (BOTTOM_ARM_OPEN + BOTTOM_ARM_CLOSE) / 2; // ~1275
 
-  digitalWrite(CBI_SWITCH_PIN, HIGH);
-  digitalWrite(DP_SWITCH_PIN, HIGH);
+  sendPanelCommand("SCHEME CYBERPUNK");
 
   bool evenOpen = true;
   unsigned long endTime = millis() + DURATION;
@@ -371,8 +295,7 @@ void Cantina() {
 
   waitTime(1000);
 
-  digitalWrite(CBI_SWITCH_PIN, LOW);
-  digitalWrite(DP_SWITCH_PIN, LOW);
+  sendPanelCommand("SCHEME CLASSIC");
 
   leftDoorOpen = false;
   rightDoorOpen = false;
@@ -407,9 +330,7 @@ void overload() {
   }
   uint8_t count = random(2, 4); // 2 or 3 panels
 
-  digitalWrite(CBI_SWITCH_PIN, HIGH);
-  digitalWrite(DP_SWITCH_PIN, HIGH);
-  digitalWrite(VM_SWITCH_PIN, HIGH);
+  sendPanelCommand("CBIMODE 6"); // first-pass guess: a glitchy/erratic mode
 
   // Lost-connection drift: each selected panel sluggishly creeps to a random
   // position up to halfway open, then stops as if it lost signal.
@@ -427,9 +348,7 @@ void overload() {
     moveServo(panels[order[i]], panelClose[order[i]], SCREAM_SPEED);
   }
 
-  digitalWrite(CBI_SWITCH_PIN, LOW);
-  digitalWrite(DP_SWITCH_PIN, LOW);
-  digitalWrite(VM_SWITCH_PIN, LOW);
+  sendPanelCommand("CBIMODE 0");
 
   waitTime(800);
 
@@ -464,10 +383,19 @@ void alarm() {
 void performEStop() {
   DEBUG_PRINT_LN(F("!!! ESTOP - freezing all servos in place !!!"));
 
-  // ReelTwo servo moves only advance when AnimatedEvent::process() is pumped
-  // (see waitTime()). Since the wait loop below never calls it, every servo
-  // simply holds its last-commanded pulse under power, exactly where it was,
-  // for as long as this function blocks — no per-servo stop() needed.
+  // Unlike VarSpeedServo/ReelTwo, the Maestro doesn't hold position just
+  // because we stop commanding it — a channel keeps ramping toward whatever
+  // target/speed it was last given. So freezing here means explicitly
+  // reading back each channel's exact current position and re-targeting it
+  // there with speed 0 (uncapped), which snaps it to a dead stop right where
+  // it is and holds it under power indefinitely.
+  for (uint8_t i = 0; i < NBR_SERVOS; i++) {
+    uint16_t pos = maestroGetPosition(i);
+    if (pos > 0) {
+      maestroSetSpeed(i, 0);
+      maestroSetTarget(i, pos);
+    }
+  }
 
   digitalWrite(STATUS_LED, HIGH); // solid on = estopped; send RESET to clear
 
@@ -532,9 +460,7 @@ void heart() {
   #define HEARTBEAT_LIFT_2    1540  // lift before second thump (slightly smaller)
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
-  digitalWrite(CBI_SWITCH_PIN, HIGH);
-
-  showHeartLEDs();
+  sendPanelCommand("CBIMODE 1"); // first-pass guess: a slow pulsing mode
 
   for (int i = 0; i < 3; i++) {
     // lift then snap shut — first thump; flash heart on the snap
@@ -552,9 +478,7 @@ void heart() {
     waitTime(700);
   }
 
-  stopHeartLEDs();
-
-  digitalWrite(CBI_SWITCH_PIN, LOW);
+  sendPanelCommand("CBIMODE 0");
 
   digitalWrite(STATUS_LED, LOW);
 }
@@ -576,10 +500,6 @@ void Flutter() {
   const int doorHalf[]     = { RIGHT_DOOR_HALF,      CBI_DOOR_HALF,      DATA_DOOR_HALF,      LEFT_DOOR_HALF      };
   const int doorClose[]    = { RIGHT_DOOR_CLOSE,     CBI_DOOR_CLOSE,     DATA_DOOR_CLOSE,     LEFT_DOOR_CLOSE     };
 
-  digitalWrite(CBI_SWITCH_PIN, HIGH);
-  digitalWrite(DP_SWITCH_PIN, HIGH);
-  digitalWrite(VM_SWITCH_PIN, HIGH);
-
   // Wave open, right to left, each door lifting halfway
   for (uint8_t i = 0; i < 4; i++) {
     moveServo(doors[i], doorHalf[i], FLUTTER_SPEED);
@@ -595,10 +515,6 @@ void Flutter() {
   }
 
   waitTime(500); // wait on last door to reach position
-
-  digitalWrite(CBI_SWITCH_PIN, LOW);
-  digitalWrite(DP_SWITCH_PIN, LOW);
-  digitalWrite(VM_SWITCH_PIN, LOW);
 
   doorsOpen = false;
   leftDoorOpen = false;
@@ -628,9 +544,7 @@ void resetServos() {
 
   moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  digitalWrite(CBI_SWITCH_PIN, LOW);
-  digitalWrite(DP_SWITCH_PIN, LOW);
-  digitalWrite(VM_SWITCH_PIN, LOW);
+  sendPanelCommand("SEQUENCE ON");
 
   waitTime(600); // wait on servos
 
@@ -669,9 +583,7 @@ void openEverything() {
 
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
-    digitalWrite(CBI_SWITCH_PIN, HIGH);
-    digitalWrite(DP_SWITCH_PIN, HIGH);
-    digitalWrite(VM_SWITCH_PIN, HIGH);
+    sendPanelCommand("BRIGHTNESS 100");
 
     waitTime(1000); // wait on servos
 
@@ -835,8 +747,7 @@ void Scream() {
 
   playScream();
 
-  digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
-  digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
+  sendPanelCommand("PERSONALITY EXCITED");
 
   for (int i = 0; i < 7; i++) {
 
@@ -875,9 +786,7 @@ void Scream() {
   moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
   moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
-  digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
-  digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
+  sendPanelCommand("PERSONALITY NORMAL");
 
   waitTime(1000); // wait on arm to reach position
 
@@ -922,9 +831,7 @@ void Doors() {
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-    digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
-    digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
+    sendPanelCommand("SEQUENCE ON");
 
     waitTime(1000); // wait on arm to reach position
 
@@ -937,9 +844,7 @@ void Doors() {
     cbiDoorOpen = true;
     dataDoorOpen = true;
 
-    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
-    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
+    sendPanelCommand("BRIGHTNESS 100");
 
     moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
     moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
@@ -1000,15 +905,11 @@ void openCBIDoor() {
     cbiDoorOpen = false;
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-    digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
-
     waitTime(1000); // wait on door to reach position
 
   } else {
     cbiDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay Door"));
-
-    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
 
     moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
@@ -1026,17 +927,11 @@ void openDataDoor() {
     dataDoorOpen = false;
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-    digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
-
     waitTime(1000); // wait on door to reach position
 
   } else {
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Data Port Door"));
-
-    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
@@ -1063,10 +958,6 @@ void openCBI_DataDoor() {
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-    digitalWrite(CBI_SWITCH_PIN, LOW); //Turns off CBI lights
-    digitalWrite(DP_SWITCH_PIN, LOW); //Turns off Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, LOW);  //Turns off Voltmeter
-
     waitTime(1000); // wait on door to reach position
 
   } else {
@@ -1074,10 +965,6 @@ void openCBI_DataDoor() {
     cbiDoorOpen = true;
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay & Data Door"));
-
-    digitalWrite(CBI_SWITCH_PIN, HIGH); //Turns on CBI lights
-    digitalWrite(DP_SWITCH_PIN, HIGH); //Turns on Data Panel lights
-    digitalWrite(VM_SWITCH_PIN, HIGH);  //Turns on Voltmeter
 
     moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
@@ -1097,34 +984,40 @@ void waitTime(unsigned long duration)
   while (millis() < endTime)
   {
     if (checkForEstop()) performEStop(); // never returns
-    AnimatedEvent::process(); // ReelTwo moves only advance while this is pumped
   }
 }
 
 // Serial Command Functions
 
 // ---------------------------------------------------------------------------
-// Marcduino / ReelTwo serial protocol handlers
+// RGB-DPL panel commands
 // ---------------------------------------------------------------------------
+// RGB-DPL (https://github.com/thePunderWoman/RGB-DPL-Firmware) shares the
+// WCB serial trunk — its plain-text command syntax (BRIGHTNESS, SCHEME,
+// PERSONALITY, CBIMODE, SEQUENCE, ...) is documented in that repo's README
+// and manual.
+void sendPanelCommand(const char* cmd) {
+  WCBSerial.println(cmd);
+}
 
-// CB<val>\n  — charge bay LED sequence
-// DP<val>\n  — data panel LED sequence
-// val encoding: (seq * 10000) + (speed * 100) + duration_seconds
-// seq 0 = normal/flicker (resume animation), seq 1 = disabled (blank display)
+// CB<val>\n  — charge bay panel command (from WCB, forwarded to RGB-DPL)
+// DP<val>\n  — data panel command (from WCB, forwarded to RGB-DPL)
+// val encoding (legacy, kept for compatibility with existing WCB behavior):
+// (seq * 10000) + (speed * 100) + duration_seconds.
+// seq 0 = resume normal animation, seq 1 = go dark/disabled.
+// First-pass mapping: both collapse to RGB-DPL's global SEQUENCE toggle,
+// since CB/DP no longer address two separate physical displays the way the
+// old MAX7219 matrices did, and speed/duration have no direct RGB-DPL
+// equivalent yet. Revisit once you've been through the full RGB-DPL manual
+// for finer per-panel control (CBIMODE/LDPLMODE/SCHEME).
 void doCBILEDCommand(long val) {
   uint8_t seq = (uint8_t)(val / 10000);
-  uint8_t dur = (uint8_t)(val % 100);
-  cbiLEDMode = (seq == 1) ? 1 : 0;
-  cbiModeEnd = (dur > 0) ? millis() + (unsigned long)dur * 1000UL : 0;
-  if (cbiLEDMode == 1) lc.clearDisplay(CBI);
+  sendPanelCommand(seq == 1 ? "SEQUENCE OFF" : "SEQUENCE ON");
 }
 
 void doDPLEDCommand(long val) {
   uint8_t seq = (uint8_t)(val / 10000);
-  uint8_t dur = (uint8_t)(val % 100);
-  dpLEDMode = (seq == 1) ? 1 : 0;
-  dpModeEnd = (dur > 0) ? millis() + (unsigned long)dur * 1000UL : 0;
-  if (dpLEDMode == 1) lc.clearDisplay(DATAPORT);
+  sendPanelCommand(seq == 1 ? "SEQUENCE OFF" : "SEQUENCE ON");
 }
 
 // Marcduino body panel numbering used here:
@@ -1139,9 +1032,7 @@ void doMarcduinoOpen(uint8_t panel) {
       moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
       moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
       moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
-      digitalWrite(CBI_SWITCH_PIN, HIGH);
-      digitalWrite(DP_SWITCH_PIN, HIGH);
-      digitalWrite(VM_SWITCH_PIN, HIGH);
+      sendPanelCommand("BRIGHTNESS 100");
       waitTime(900);
       topUtilityArmOpen = true; bottomUtilityArmOpen = true; utilityArmOpen = true;
       leftDoorOpen = true; rightDoorOpen = true;
@@ -1175,15 +1066,12 @@ void doMarcduinoOpen(uint8_t panel) {
     case 5:
       if (cbiDoorOpen) return;
       cbiDoorOpen = true;
-      digitalWrite(CBI_SWITCH_PIN, HIGH);
       moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
       waitTime(900);
       break;
     case 6:
       if (dataDoorOpen) return;
       dataDoorOpen = true;
-      digitalWrite(DP_SWITCH_PIN, HIGH);
-      digitalWrite(VM_SWITCH_PIN, HIGH);
       moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
       waitTime(900);
       break;
@@ -1199,9 +1087,7 @@ void doMarcduinoClose(uint8_t panel) {
       moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      digitalWrite(CBI_SWITCH_PIN, LOW);
-      digitalWrite(DP_SWITCH_PIN, LOW);
-      digitalWrite(VM_SWITCH_PIN, LOW);
+      sendPanelCommand("SEQUENCE ON");
       waitTime(900);
       topUtilityArmOpen = false; bottomUtilityArmOpen = false; utilityArmOpen = false;
       leftDoorOpen = false; rightDoorOpen = false;
@@ -1236,15 +1122,12 @@ void doMarcduinoClose(uint8_t panel) {
       if (!cbiDoorOpen) return;
       cbiDoorOpen = false;
       moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      digitalWrite(CBI_SWITCH_PIN, LOW);
       waitTime(900);
       break;
     case 6:
       if (!dataDoorOpen) return;
       dataDoorOpen = false;
       moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      digitalWrite(DP_SWITCH_PIN, LOW);
-      digitalWrite(VM_SWITCH_PIN, LOW);
       waitTime(900);
       break;
   }
@@ -1361,313 +1244,3 @@ void doCommand(const char* cmd) {
   }
 }
 
-///////////////////////////////////////////////////
-// Test LEDs, each Maxim driver row in turn
-// Each LED blinks according to the col number
-// Col 0 is just on
-// Col 1 blinks twice
-// col 2 blinks 3 times, etc...
-//
-
-#define TESTDELAY 30
-void singleTest()
-{
-  for (int row = 0; row < 6; row++)
-  {
-    for (int col = 0; col < 7; col++)
-    {
-      waitTime(TESTDELAY);
-      lc.setLed(DATAPORT, row, col, true);
-      waitTime(TESTDELAY);
-      for (int i = 0; i < col; i++)
-      {
-        lc.setLed(DATAPORT, row, col, false);
-        waitTime(TESTDELAY);
-        lc.setLed(DATAPORT, row, col, true);
-        waitTime(TESTDELAY);
-      }
-    }
-  }
-
-  for (int row = 0; row < 4; row++)
-  {
-    for (int col = 0; col < 5; col++)
-    {
-      waitTime(TESTDELAY);
-      lc.setLed(CBI, row, col, true);
-      waitTime(TESTDELAY);
-      for (int i = 0; i < col; i++)
-      {
-        lc.setLed(CBI, row, col, false);
-        waitTime(TESTDELAY);
-        lc.setLed(CBI, row, col, true);
-        waitTime(TESTDELAY);
-      }
-    }
-  }
-
-  lc.setLed(CBI, 4, 5, true);
-  waitTime(TESTDELAY);
-  lc.setLed(CBI, 5, 5, true);
-  waitTime(TESTDELAY);
-  lc.setLed(CBI, 6, 5, true);
-  waitTime(TESTDELAY);
-}
-
-///////////////////////////////////
-// animates the two top left blocks
-// (green and yellow blocks)
-void updateTopBlocks()
-{
-  if (dpLEDMode == 1) return;
-  static unsigned long timeLast = 0;
-  unsigned long elapsed;
-  elapsed = millis();
-  if ((elapsed - timeLast) < TOPBLOCKSPEED) return;
-  timeLast = elapsed;
-
-  lc.setRow(DATAPORT, 4, randomRow(4)); // top yellow blocks
-  lc.setRow(DATAPORT, 5, randomRow(4)); // top green blocks
-
-}
-
-///////////////////////////////////
-// animates the CBI
-//
-void updateCBILEDs()
-{
-  if (cbiLEDMode == 1) return;
-  static unsigned long timeLast = 0;
-  unsigned long elapsed;
-  elapsed = millis();
-  if ((elapsed - timeLast) < CBISPEED) return;
-  timeLast = elapsed;
-
-#ifdef monitorVCC
-  lc.setRow(CBI, random(4), randomRow(random(4)));
-#else
-  lc.setRow(CBI, random(7), randomRow(random(4)));
-#endif
-}
-
-////////////////////////////////////
-// Utility to generate random LED patterns
-// Mode goes from 0 to 6. The lower the mode
-// the less the LED density that's on.
-// Modes 4 and 5 give the most organic feel
-byte randomRow(byte randomMode)
-{
-  switch (randomMode)
-  {
-    case 0:  // stage -3
-      return (random(256)&random(256)&random(256)&random(256));
-      break;
-    case 1:  // stage -2
-      return (random(256)&random(256)&random(256));
-      break;
-    case 2:  // stage -1
-      return (random(256)&random(256));
-      break;
-    case 3: // legacy "blocky" mode
-      return random(256);
-      break;
-    case 4:  // stage 1
-      return (random(256) | random(256));
-      break;
-    case 5:  // stage 2
-      return (random(256) | random(256) | random(256));
-      break;
-    case 6:  // stage 3
-      return (random(256) | random(256) | random(256) | random(256));
-      break;
-    default:
-      return random(256);
-      break;
-  }
-}
-
-//////////////////////
-// bargraph for the right column
-// disp 0: Row 2 Col 5 to 0 (left bar) - 6 to 0 if including lower red LED,
-// disp 1: Row 3 Col 5 to 0 (right bar)
-
-#define MAXGRAPH 2
-
-void bargraphDisplay(byte disp)
-{
-  if (dpLEDMode == 1) return;
-  static byte bargraphdata[MAXGRAPH]; // status of bars
-
-  if (disp >= MAXGRAPH) return;
-
-  // speed control
-  static unsigned long previousDisplayUpdate[MAXGRAPH] = {0, 0};
-
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousDisplayUpdate[disp] < BARGRAPHSPEED) return;
-  previousDisplayUpdate[disp] = currentMillis;
-
-  // adjust to max numbers of LED available per bargraph
-  byte maxcol;
-  if (disp == 0 || disp == 1) maxcol = 6;
-  else maxcol = 3; // for smaller graph bars, not defined yet
-
-  // use utility to update the value of the bargraph  from it's previous value
-  byte value = updatebar(disp, &bargraphdata[disp], maxcol);
-  byte data = 0;
-  // transform value into byte representing of illuminated LEDs
-  // start at 1 so it can go all the way to no illuminated LED
-  for (int i = 1; i <= value; i++)
-  {
-    data |= 0x01 << (i - 1);
-  }
-  // transfer the byte column wise to the video grid
-  fillBar(disp, data, value, maxcol);
-}
-
-/////////////////////////////////
-// helper for updating bargraph values, to imitate bargraph movement
-byte updatebar(byte disp, byte* bargraphdata, byte maxcol)
-{
-  // bargraph values go up or down one pixel at a time
-  int variation = random(0, 3);           // 0= move down, 1= stay, 2= move up
-  int value = (int)(*bargraphdata);       // get the previous value
-  //if (value==maxcol) value=maxcol-2; else      // special case, staying stuck at maximum does not look realistic, knock it down
-  value += (variation - 1);               // grow or shring it by one step
-#ifndef BLUELEDTRACKGRAPH
-  if (value <= 0) value = 0;              // can't be lower than 0
-#else
-  if (value <= 1) value = 1;              // if blue LED tracks, OK to keep lower LED always on
-#endif
-  if (value > maxcol) value = maxcol;     // can't be higher than max
-  (*bargraphdata) = (byte)value;          // store new value, use byte type to save RAM
-  return (byte)value;                     // return new value
-}
-
-/////////////////////////////////////////
-// helper for lighting up a bar of LEDs based on a value
-void fillBar(byte disp, byte data, byte value, byte maxcol)
-{
-  for (byte col = 0; col < maxcol; col++)
-  {
-    // test state of LED
-    byte LEDon = (data & 1 << col);
-    if (LEDon)
-    {
-      //lc.setLed(DATAPORT,row,maxcol-col-1,true);  // set column bit
-      lc.setLed(DATAPORT, 2, maxcol - col - 1, true); // set column bit
-      lc.setLed(DATAPORT, 3, maxcol - col - 1, true); // set column bit
-      //lc.setLed(DATAPORT,0,maxcol-col-1,true);      // set blue column bit
-    }
-    else
-    {
-      //lc.setLed(DATAPORT,row,maxcol-col-1,false); // reset column bit
-      lc.setLed(DATAPORT, 2, maxcol - col - 1, false); // reset column bit
-      lc.setLed(DATAPORT, 3, maxcol - col - 1, false); // reset column bit
-      //lc.setLed(DATAPORT,0,maxcol-col-1,false);     // set blue column bit
-    }
-  }
-#ifdef BLUELEDTRACKGRAPH
-  // do blue tracking LED
-  byte blueLEDrow = B00000010;
-  blueLEDrow = blueLEDrow << value;
-  lc.setRow(DATAPORT, 0, blueLEDrow);
-#endif
-}
-
-/////////////////////////////////
-// This animates the bottom white LEDs
-void updatebottomLEDs()
-{
-  if (dpLEDMode == 1) return;
-  static unsigned long timeLast = 0;
-  unsigned long elapsed = millis();
-  if ((elapsed - timeLast) < BOTTOMLEDSPEED) return;
-  timeLast = elapsed;
-
-  // bottom LEDs are row 1,
-  lc.setRow(DATAPORT, 1, randomRow(4));
-}
-
-////////////////////////////////
-// This is for the two red LEDs
-void updateRedLEDs()
-{
-  if (dpLEDMode == 1) return;
-  static unsigned long timeLast = 0;
-  unsigned long elapsed = millis();
-  if ((elapsed - timeLast) < REDLEDSPEED) return;
-  timeLast = elapsed;
-
-  // red LEDs are row 2 and 3, col 6,
-  lc.setLed(DATAPORT, 2, 6, random(0, 2));
-  lc.setLed(DATAPORT, 3, 6, random(0, 2));
-}
-
-//////////////////////////////////
-// This animates the blue LEDs
-// Uses a random delay, which never exceeds BLUELEDSPEED
-void updateBlueLEDs()
-{
-  if (dpLEDMode == 1) return;
-  static unsigned long timeLast = 0;
-  static unsigned long variabledelay = BLUELEDSPEED;
-  unsigned long elapsed = millis();
-  if ((elapsed - timeLast) < variabledelay) return;
-  timeLast = elapsed;
-  variabledelay = random(10, BLUELEDSPEED);
-
-  /*********experimental, moving dots animation
-    static byte stage=0;
-    stage++;
-    if (stage>7) stage=0;
-    byte LEDstate=B00000011;
-    // blue LEDs are row 0 col 0-5
-    lc.setRow(DATAPORT,0,LEDstate<<stage);
-  *********************/
-
-  // random
-  lc.setRow(DATAPORT, 0, randomRow(4));
-}
-
-void getVCC()
-{
-  value = analogRead(analoginput); // this must be between 0.0 and 5.0 - otherwise you'll let the blue smoke out of your arduino
-  vout = (value * 5.0) / 1024.0; //voltage coming out of the voltage divider
-  vin = vout / (R2 / (R1 + R2)); //voltage to display
-  if (vin < 0.09) {
-    vin = 0.0; //avoids undesirable reading
-  }
-
-  lc.setLed(CBI, 6, 5, (vin >= greenVCC));
-  lc.setLed(CBI, 5, 5, (vin >= yellowVCC));
-  lc.setLed(CBI, 4, 5, (vin >= redVCC));
-#ifdef DEBUG_VM
-  DEBUG_PRINT(F("Volt Out = "));
-  DEBUG_PRINT_DEC(vout, 1);   //Print float "vout" with 1 decimal place
-  DEBUG_PRINT(F("\tVolts Calc = "));
-  DEBUG_PRINT_LN_DEC(vin, 1);   //Print float "vin" with 1 decimal place
-#endif
-}
-
-///////////////////////////////////
-// Heart sequence LED helpers
-//
-// CBI matrix is 4 rows x 5 cols (rows 0-3, cols 0-4).
-// setRow byte: bit7=col0
-//   Row 0: . X . X .  = 0x50
-//   Row 1: X X X X X  = 0xF8
-//   Row 2: . X X X .  = 0x70
-//   Row 3: . . X . .  = 0x20
-
-void showHeartLEDs() {
-  lc.clearDisplay(CBI);
-  lc.setRow(CBI, 0, 0x50);
-  lc.setRow(CBI, 1, 0xF8);
-  lc.setRow(CBI, 2, 0x70);
-  lc.setRow(CBI, 3, 0x20);
-}
-
-void stopHeartLEDs() {
-  lc.clearDisplay(CBI);
-}

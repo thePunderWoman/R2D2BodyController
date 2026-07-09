@@ -1,18 +1,15 @@
-// CMB Servo Expander Body v 1.7
-//Configuration Header
+// Jessica's Astromech Body Controller Firmware — ESP32-C3 SuperMini + Pololu Maestro + RGB-DPL
+// Configuration Header
 
 // -------------------------------------------------
-// Define some constants to help reference objects,
-// pins, servos, leds etc by name instead of numbers
+// I2C Address (kept for reference / parity with sibling boards on the bus)
 // -------------------------------------------------
-
-// I2C Address
-#define I2CAddress 9      //I2C Address for Body Servo Expander
+#define I2CAddress 9      //I2C Address for Body Controller
 
 // Destination I2C addresses
 #define STEALTH_CNTL 0    // Main Stealth Controller (Master for the Body I2C bus)
-#define BODY_EXP 9        // Body Servo Expander
-#define DOME_EXP 12       // Dome Servo Expander
+#define BODY_EXP 9        // Body Controller
+#define DOME_EXP 12       // Dome Astropixels Plus
 #define LOGICS 10         // Rseries Logics (Teensy version)
 #define MAGIC_PNL 20      // Magic Panel
 #define PSI_FRNT 22       // Front PSI
@@ -20,31 +17,50 @@
 #define FLTHY_HP 25       // FlthyHP Breakout Board
 #define PERI_LIFT 32      // Periscope Lifter
 
-// Our Status LED on Arduino Digital IO #13, this is the built in LED on the Pro Mini
-#define STATUS_LED 13
+// -------------------------------------------------
+// Firmware identity — shown on the OTA update page (see web_page.h). Bump
+// FIRMWARE_VERSION by hand each release.
+// -------------------------------------------------
+#define FIRMWARE_VERSION "2.0.0"
+#define BOARD_REV        "1.0"
+#define MCU_VARIANT      "ESP32-C3 SuperMini"
 
-// These are easy names for our Arduino I/O pins and what they're used for
-// Note on the Servo expander board, numbering starts at 1,2,3 etc.
-// but internally we add 1 to get the real Arduino number.
+// -------------------------------------------------
+// WiFi AP for wireless firmware updates. Connect to this network, then
+// browse to http://bodycontroller.local/ (or the IP shown on boot).
+// -------------------------------------------------
+#define OTA_AP_SSID     "BodyController"
+#define OTA_AP_PASSWORD "Astromech"   // CHANGE ME before flashing
 
-#define LEFT_DOOR_SERVO_PIN 2        // Left Front Door Servo. Arduino Digitial IO #2
-#define RIGHT_DOOR_SERVO_PIN 3       // Right Front Door Servo. Arduino Digital IO #3
-#define TOP_UTIL_ARM_SERVO_PIN 4  // Top Utility Arm. Arduino Digitial IO #4
-#define BOTTOM_UTIL_ARM_SERVO_PIN 5     // Bottom Utility Arm. Arduino Digitial IO #5
-#define CBI_DOOR_SERVO_PIN 6         // Charge Bay Door. Arduino Digitial IO #6
-#define DATA_DOOR_SERVO_PIN 7        // Data Panel Door. Arduino Digitial IO #7
-#define CBI_SWITCH_PIN 8            // Charge Bay On/Off. Arduino Digital IO #8
-#define DP_SWITCH_PIN 9           // Data Panel On/Off. Arduino Digital IO #9
-#define VM_SWITCH_PIN 14             // Volt Meter On/Off. Arudion Digital IO #14 (A0)
+// Onboard LED on the SuperMini board (nologo_esp32c3_super_mini variant)
+#define STATUS_LED 8
 
+// -------------------------------------------------
+// Serial buses
+// -------------------------------------------------
+// UART0 — shared trunk: WCB commands in, HCR vocalizer commands out, and
+// RGB-DPL panel commands out (sendPanelCommand() in the .ino). These are the
+// conventional default UART0 pins on ESP32-C3 boards; verify against your
+// SuperMini's silkscreen.
+#define WCB_RX_PIN 20
+#define WCB_TX_PIN 21
+#define WCB_BAUD   9600
 
+// UART1 — Pololu Mini Maestro 12, Compact Protocol only. Configure the
+// Maestro itself (via Maestro Control Center) to "Fixed Baud Rate" at
+// MAESTRO_BAUD to match — it won't talk back until that's set.
+#define MAESTRO_RX_PIN 5
+#define MAESTRO_TX_PIN 4
+#define MAESTRO_BAUD   115200
 
-#define NBR_SERVOS 6  // Number of Servos
+HardwareSerial WCBSerial(0);
+HardwareSerial MaestroSerial(1);
 
-// More easy names  so we can reference the array element/row by name instead
-// trying to remember the number.
-// Note: This is different to the pin number we attach each servo to.
+#define NBR_SERVOS 6  // Number of servos == Maestro channels 0-5
 
+// Easy names for the servo index / Maestro channel number — same value
+// serves both roles, no separate pin table needed now that the Maestro
+// generates the actual PWM.
 #define LEFT_DOOR 0
 #define RIGHT_DOOR 1
 #define CBI_DOOR 2
@@ -52,7 +68,11 @@
 #define BOTTOM_UTIL_ARM 4
 #define TOP_UTIL_ARM 5
 
-//Servo Speeds
+//Servo Speeds — Maestro Set Speed units, (0.25us)/(10ms). This works out to
+// the exact same us/sec-per-unit rate as VarSpeedServo's old speed units
+// (both are "N minimal-time-units per fixed tick" designs that happen to
+// reduce to the same 25 us/sec-per-unit constant), so the original 0-255
+// values carry over unscaled. Still just a starting point — retune by feel.
 #define UTILITYARMSSPEED 100 // servo speed for opening utility arms. 1=super slow, 255=fastest
 #define UTILITYARMSSPEED2 45 // servo speed for opening utility arms. 1=super slow, 255=fastest
 #define UTILITYARMSSPEED3 35 // servo speed for opening utility arms. 1=super slow, 255=fastest
@@ -68,7 +88,10 @@
 #define FLUTTER_STAGGER_MS 120  // delay between each door starting its move, right to left
 #define FLUTTER_HOLD_MS 500     // how long doors hold halfway open before closing wave
 
-//Tweaked Pulse Widths. Usually 1000-2000 or 500-2500
+//Tweaked Pulse Widths. Usually 1000-2000 or 500-2500. These clamp
+// moveServo() targets in firmware as a software safety net — also set
+// matching per-channel min/max limits on the Maestro itself via Maestro
+// Control Center for a hardware-level backstop.
 #define ARMMINPULSE 600
 #define ARMMAXPULSE 2400
 
@@ -85,42 +108,67 @@
 #define DATA_DOOR_MAXPULSE 650
 
 // ---------------------------------------------------------
-// ReelTwo ServoDispatch setup
+// Pololu Maestro servo driver (Compact Protocol over MaestroSerial)
 // ---------------------------------------------------------
-// Replaces VarSpeedServo: ServoDispatchDirect drives all 6 channels off the
-// same Timer1 ISR technique VarSpeedServo used, but has no attach()/detach()
-// step - it attaches on the first move and auto-detaches ~500ms after a move
-// settles. Servo moves only advance while AnimatedEvent::process() is being
-// pumped (see loop() and waitTime()); it is not interrupt-driven like
-// VarSpeedServo's slew was.
-#include "ReelTwo.h"
-#include "ServoDispatchDirect.h"
+// The Maestro does its own speed-limited interpolation in hardware, so
+// unlike the ReelTwo ServoDispatchDirect this replaced, nothing here needs
+// AnimatedEvent::process() pumped to make progress — sequences just fire a
+// Set Speed + Set Target pair and the Maestro takes it from there.
 
-// pin, start (attach-time "min") pulse, end (attach-time "max") pulse, group (unused here)
-const ServoSettings servoSettings[NBR_SERVOS] PROGMEM = {
-  { LEFT_DOOR_SERVO_PIN,       LEFT_DOOR_MINPULSE,       LEFT_DOOR_MAXPULSE,       0 }, // 0: LEFT_DOOR
-  { RIGHT_DOOR_SERVO_PIN,      RIGHT_DOOR_MINPULSE,      RIGHT_DOOR_MAXPULSE,      0 }, // 1: RIGHT_DOOR
-  { CBI_DOOR_SERVO_PIN,        CBI_DOOR_MINPULSE,        CBI_DOOR_MAXPULSE,        0 }, // 2: CBI_DOOR
-  { DATA_DOOR_SERVO_PIN,       DATA_DOOR_MINPULSE,       DATA_DOOR_MAXPULSE,       0 }, // 3: DATA_DOOR
-  { BOTTOM_UTIL_ARM_SERVO_PIN, ARMMINPULSE,              ARMMAXPULSE,              0 }, // 4: BOTTOM_UTIL_ARM
-  { TOP_UTIL_ARM_SERVO_PIN,    ARMMINPULSE,              ARMMAXPULSE,              0 }, // 5: TOP_UTIL_ARM
+static const uint16_t servoMinPulse[NBR_SERVOS] = {
+  LEFT_DOOR_MINPULSE, RIGHT_DOOR_MINPULSE, CBI_DOOR_MINPULSE, DATA_DOOR_MINPULSE, ARMMINPULSE, ARMMINPULSE
+};
+static const uint16_t servoMaxPulse[NBR_SERVOS] = {
+  LEFT_DOOR_MAXPULSE, RIGHT_DOOR_MAXPULSE, CBI_DOOR_MAXPULSE, DATA_DOOR_MAXPULSE, ARMMAXPULSE, ARMMAXPULSE
 };
 
-ServoDispatchDirect<NBR_SERVOS> Servos(servoSettings);
+// A couple of these pairs are stored max<min (e.g. DATA_DOOR), so clamp
+// against the numeric min/max of the pair rather than assuming order.
+static inline uint16_t clampServoPulse(uint8_t servoIndex, uint16_t pos)
+{
+  uint16_t a = servoMinPulse[servoIndex];
+  uint16_t b = servoMaxPulse[servoIndex];
+  uint16_t lo = min(a, b);
+  uint16_t hi = max(a, b);
+  if (pos < lo) pos = lo;
+  if (pos > hi) pos = hi;
+  return pos;
+}
 
-// VarSpeedServo's write(pos, speed) took a 0-255 rate; ServoDispatch's
-// moveToPulse() takes an explicit duration instead. This reproduces the old
-// rate's timing (derived from VarSpeedServo's tick-per-refresh algorithm:
-// ticks change by `speed` every 20ms REFRESH_INTERVAL, 1 tick = 0.5us on a
-// 16MHz AVR, so duration_ms = distance_us * 40 / speed). Treat this as a
-// rough starting point, not gospel - retune the SPEED constants in this file
-// by feel once this is running on the actual body.
+static inline void maestroSetTarget(uint8_t channel, uint16_t pulseUs)
+{
+  uint16_t target = pulseUs * 4; // Maestro units are quarter-microseconds
+  uint8_t buf[4] = { 0x84, channel, (uint8_t)(target & 0x7F), (uint8_t)((target >> 7) & 0x7F) };
+  MaestroSerial.write(buf, 4);
+}
+
+static inline void maestroSetSpeed(uint8_t channel, uint16_t speed)
+{
+  uint8_t buf[4] = { 0x87, channel, (uint8_t)(speed & 0x7F), (uint8_t)((speed >> 7) & 0x7F) };
+  MaestroSerial.write(buf, 4);
+}
+
+// Get Position (0x90) — blocks briefly for the Maestro's 2-byte reply. Only
+// used by performEStop() to read exactly where a channel is before locking
+// it there; nothing else in normal sequence playback needs a round trip.
+static inline uint16_t maestroGetPosition(uint8_t channel)
+{
+  uint8_t cmd[2] = { 0x90, channel };
+  MaestroSerial.write(cmd, 2);
+  unsigned long start = millis();
+  while (MaestroSerial.available() < 2) {
+    if (millis() - start > 50) return 0; // timeout - treat as "unknown"
+  }
+  uint8_t lo = MaestroSerial.read();
+  uint8_t hi = MaestroSerial.read();
+  return (((uint16_t)hi << 7) | lo) / 4; // quarter-microseconds -> microseconds
+}
+
 static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
 {
-  uint16_t from = Servos.currentPos(servoIndex);
-  uint16_t distance = (from > pos) ? (from - pos) : (pos - from);
-  uint32_t duration = (speed == 0) ? 0 : (uint32_t)distance * 40UL / speed;
-  Servos.moveToPulse(servoIndex, duration, pos);
+  pos = clampServoPulse(servoIndex, pos);
+  maestroSetSpeed(servoIndex, speed);
+  maestroSetTarget(servoIndex, pos);
 }
 
 //Servo Positions
@@ -138,81 +186,10 @@ static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
 #define CBI_DOOR_CLOSE 1780
 #define DATA_DOOR_CLOSE 1650
 
-// change this to match which Arduino pins you connect your panel to,
-// which can be any 3 digital pins you have available.
-#define DATAIN_PIN 10
-#define CLOCK_PIN  11
-#define LOAD_PIN   12
-
-//Set this to which Analog Pin you use for the voltage in.
-#define analoginput A3
-
-//Battery Voltage
-//#define TWELVE // Uncomment if you have a 12v system
-// #define EIGHTEEN //Uncomment if you have an 18v system
-#define TWENTYFOUR //Uncomment if you have a 24v system
-
 // Uncomment this if you want Debug output.
 #define DEBUG
 
-// Uncomment this to show the Volt Meter output in Debug
-//#define DEBUG_VM
-
-// Voltage divider capable of accepting up to 30v input
-#define R1 98800.0     // >> resistance of R1 in ohms << the more accurate these values are
-#define R2 10020.0     // >> resistance of R2 in ohms << the more accurate the measurement will be
-
-// change this to match your hardware chain
-#define CBI      0 // CBI first in chain (device 0)
-#define DATAPORT 1 // the dataport second in chain (device 1)
-
-// Number of Maxim chips that are connected
-#define NUMDEV 2   // One for the dataport, one for the battery indicator
-
-// the dataport is quite dim, so I put it to the maximum
-#define DATAPORTINTENSITY 15  // 15 is max
-#define CBIINTENSITY 15  // 15 is max
-
-// uncomment this to test the LEDS one after the other at startup
-//#define TEST
-// This will revert to the old style block animation for comparison
-//#define LEGACY
-
-// If you are using the voltage monitor uncomment this
-#define monitorVCC
-
-// the timing values below control the various effects. Tweak to your liking.
-// values are in ms. The lower the faster.
-#define TOPBLOCKSPEED   70
-#define BOTTOMLEDSPEED  200
-#define REDLEDSPEED     500
-#define BLUELEDSPEED    500
-#define BARGRAPHSPEED   200
-#define CBISPEED        50
-
-// Uncomment this if you want an alternate effect for the blue LEDs, where it moves
-// in sync with the bar graph
-//#define BLUELEDTRACKGRAPH
-
-//LED Voltage indicator thresholds
-#ifdef TWELVE
-  #define greenVCC 12.5    // Green LED on if above this voltage
-  #define yellowVCC 12.0   // Yellow LED on if above this voltage
-  #define redVCC 11.5      // Red LED on if above this voltage
-#elif defined(EIGHTEEN)
-  #define greenVCC 18.0    // Green LED on if above this voltage
-  #define yellowVCC 17.0   // Yellow LED on if above this voltage
-  #define redVCC 15.0      // Red LED on if above this voltage
-#elif defined(TWENTYFOUR)
-  #define greenVCC 25.0    // Green LED on if above this voltage
-  #define yellowVCC 24.0   // Yellow LED on if above this voltage
-  #define redVCC 23.0      // Red LED on if above this voltage
-#endif
-
 //Setup Debug Switch
-// ReelTwo.h (included above) also defines DEBUG_PRINT as a no-op; undef it
-// first so ours wins without a macro-redefinition warning.
-#undef DEBUG_PRINT
 #ifdef DEBUG
 #define DEBUG_PRINT_LN(msg)  Serial.println(msg)
 #define DEBUG_PRINT(msg)  Serial.print(msg)
@@ -224,10 +201,3 @@ static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
 #define DEBUG_PRINT_LN_DEC(msg, dec_places)
 #define DEBUG_PRINT_DEC(msg, dec_places)
 #endif
-
-// Command processing stuff
-// maximum number of characters in a command (63 chars since we need the null termination)
-#define CMD_MAX_LENGTH 64
-
-// memory for command string processing
-char cmdString[CMD_MAX_LENGTH];
