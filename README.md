@@ -14,7 +14,8 @@ firmware talks to over serial rather than drives directly.
 - **Audio:** HCR Vocalizer (external Teensy 4.1 + Audio Shield) via serial, sharing UART0
 - **Communication:**
   - UART0 — WCB commands in, HCR vocalizer commands out, RGB-DPL panel commands out (one shared trunk)
-  - UART1 — Pololu Maestro only
+  - UART1 — Pololu Maestro Compact Protocol
+  - Maestro RST (hard reset, ESP32 → Maestro) and ERR (error flag, Maestro → ESP32) lines, wired for recovery/diagnostics — see `BD:MRESET` below
   - WiFi (self-hosted AP) — wireless firmware updates, see below
 
 Voltage monitoring and LED-matrix driving that used to live on this board
@@ -56,6 +57,7 @@ Three command styles arrive on UART0, all originating from the WCB:
 | `ESTOP` | Release every servo (goes limp/unpowered) and block forever (see below) |
 | `WIFI` / `WIFI0` / `WIFI1` | Toggle / disable / enable the WiFi AP + OTA update server — starts on at boot, turn off to cut RF noise during a show. Matches the `#APWIFI[0\|1]` / `#PWIFI[0\|1]` convention on AstroPixelsPlus and the Periscope |
 | `RESET` | Close all doors/arms, reset vocalizer |
+| `MRESET` | Hard-reset just the Maestro's own microcontroller (RST line) — for when it's stopped responding to serial entirely and a normal `RESET` can't reach it |
 | `OPENALL` | Open all doors and utility arms |
 | `DOORS` | Toggle all four doors |
 | `UARMS` | Toggle both utility arms |
@@ -94,6 +96,27 @@ which tells the Maestro to stop pulsing those channels entirely — servos go
 limp/unpowered rather than being held in place — then blocks forever. The
 only way out is power-cycling or sending `BD:RESET`, which reboots the board via
 `ESP.restart()`.
+
+### Idle servo release
+
+Unlike VarSpeedServo/ReelTwo, the Maestro holds a channel under power
+indefinitely once it reaches a commanded position — which causes an audible
+hunting/buzz noise on a servo held stationary. `moveServo()` estimates each
+move's completion time (same distance/speed math the Maestro uses
+internally) and `releaseIdleServos()` — pumped from both `loop()` and
+`waitTime()`, since sequences spend most of their time blocked in the
+latter — releases (Set Target 0) any channel that's gone quiet since. A
+channel still being actively re-commanded (e.g. mid-sequence) never hits
+this. Tune the settle padding via `SERVO_RELEASE_MARGIN_MS` in `config.h`.
+
+### Maestro error reporting
+
+The Maestro's ERR line is polled every `loop()` (cheap digital read); when it
+goes high, `maestroReportErrors()` fetches and decodes the error bitmask
+(Get Errors, `0xA1`) and prints it to the debug console — rate-limited to
+once/second so a persistent error can't flood the console or the shared
+serial line. See `maestroReportErrors()` in `config.h` for the specific
+error bits decoded.
 
 ## Configuration
 

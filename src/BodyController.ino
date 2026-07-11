@@ -45,6 +45,10 @@ void setup()
   WCBSerial.begin(WCB_BAUD, SERIAL_8N1, WCB_RX_PIN, WCB_TX_PIN);
   MaestroSerial.begin(MAESTRO_BAUD, SERIAL_8N1, MAESTRO_RX_PIN, MAESTRO_TX_PIN);
 
+  pinMode(MAESTRO_RST_PIN, OUTPUT);
+  digitalWrite(MAESTRO_RST_PIN, HIGH); // idle high; active low, see maestroHardReset()
+  pinMode(MAESTRO_ERR_PIN, INPUT);
+
   DEBUG_PRINT_LN(F("Body Controller " FIRMWARE_VERSION " (" MCU_VARIANT ")"));
   DEBUG_PRINT_LN(F("Command serial ready (UART0 @ 9600)"));
 
@@ -63,6 +67,16 @@ void setup()
 void loop() {
   readSerial();
   if (otaWebServerRunning) webServer.handleClient();
+  releaseIdleServos(); // stops holding a channel under power once its move has settled
+
+  // Cheap digitalRead every loop; the actual Get Errors round-trip only
+  // happens (at most once/sec) while the Maestro is actively flagging one,
+  // so a persistent error can't flood the serial line or the debug console.
+  static unsigned long lastErrorCheck = 0;
+  if (digitalRead(MAESTRO_ERR_PIN) == HIGH && millis() - lastErrorCheck > 1000) {
+    lastErrorCheck = millis();
+    maestroReportErrors();
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -979,6 +993,7 @@ void waitTime(unsigned long duration)
   while (millis() < endTime)
   {
     if (checkForEstop()) performEStop(); // never returns
+    releaseIdleServos(); // sequences spend most of their time in here, not loop()
   }
 }
 
@@ -1193,6 +1208,13 @@ void doCommand(const char* cmd) {
       DEBUG_PRINT_LN(F("WiFi on"));
       startOTAWebServer();
     }
+  } else if (strcmp(cmd, "MRESET") == 0) {
+    // Hard-resets just the Maestro's own microcontroller — for when it's
+    // stopped responding to Compact Protocol entirely and a normal
+    // "BD:RESET" (which only works by sending more serial commands) can't
+    // reach it. Doesn't touch servo config, lights, or the vocalizer.
+    DEBUG_PRINT_LN(F("Maestro hard reset"));
+    maestroHardReset();
   } else if (strcmp(cmd, "RESET") == 0) {
     DEBUG_PRINT_LN(F("Got reset message"));
     resetServos();

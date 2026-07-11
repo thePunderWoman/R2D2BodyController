@@ -2,6 +2,24 @@
 // Configuration Header
 
 // -------------------------------------------------
+// Debug output — defined first since driver helpers further down use it.
+// Comment out DEBUG to silence all DEBUG_PRINT*/DEBUG_PRINT_LN* output.
+// -------------------------------------------------
+#define DEBUG
+
+#ifdef DEBUG
+#define DEBUG_PRINT_LN(msg)  Serial.println(msg)
+#define DEBUG_PRINT(msg)  Serial.print(msg)
+#define DEBUG_PRINT_LN_DEC(msg, dec_places) Serial.println(msg, dec_places)
+#define DEBUG_PRINT_DEC(msg, dec_places) Serial.print(msg, dec_places)
+#else
+#define DEBUG_PRINT_LN(msg)
+#define DEBUG_PRINT(msg)
+#define DEBUG_PRINT_LN_DEC(msg, dec_places)
+#define DEBUG_PRINT_DEC(msg, dec_places)
+#endif
+
+// -------------------------------------------------
 // I2C Address (kept for reference / parity with sibling boards on the bus)
 // -------------------------------------------------
 #define I2CAddress 9      //I2C Address for Body Controller
@@ -49,9 +67,17 @@
 // UART1 — Pololu Mini Maestro 12, Compact Protocol only. Configure the
 // Maestro itself (via Maestro Control Center) to "Fixed Baud Rate" at
 // MAESTRO_BAUD to match — it won't talk back until that's set.
-#define MAESTRO_RX_PIN 5
+#define MAESTRO_RX_PIN 3
 #define MAESTRO_TX_PIN 4
 #define MAESTRO_BAUD   115200
+
+// Optional hardware lines, not required for basic operation but wired up
+// for resilience/diagnostics. Neither GPIO5 nor GPIO6 is an ESP32-C3
+// strapping pin, so they're safe regardless of what the Maestro is doing
+// to them at boot (GPIO2/8/9 are the ones to avoid — see the note on
+// MAESTRO_ERR_PIN below for why that mattered here).
+#define MAESTRO_RST_PIN 5  // ESP32 output -> Maestro RST (active low; Maestro pulls it up internally, so idle-high here is safe)
+#define MAESTRO_ERR_PIN 6  // Maestro ERR -> ESP32 input (idles LOW when no error, which is why this can't be a strapping pin)
 
 HardwareSerial WCBSerial(0);
 HardwareSerial MaestroSerial(1);
@@ -148,11 +174,98 @@ static inline void maestroSetSpeed(uint8_t channel, uint16_t speed)
   MaestroSerial.write(buf, 4);
 }
 
+// How long after a commanded move should finish before its channel gets
+// released (Set Target 0) if nothing re-commands it first. The Maestro
+// holds a channel under power indefinitely once it reaches a target --
+// unlike VarSpeedServo/ReelTwo, which auto-detached after settling -- and
+// a servo held under power while stationary is exactly what causes the
+// hunting/buzz noise. This margin is padding on top of the estimated move
+// time, to allow for the Maestro's own settle/overshoot.
+#define SERVO_RELEASE_MARGIN_MS 300
+
+static uint16_t servoLastPos[NBR_SERVOS] = {
+  LEFT_DOOR_MINPULSE, RIGHT_DOOR_MINPULSE, CBI_DOOR_MINPULSE, DATA_DOOR_MINPULSE, ARMMINPULSE, ARMMINPULSE
+};
+static unsigned long servoReleaseAt[NBR_SERVOS] = { 0 };
+static bool servoReleased[NBR_SERVOS] = { true, true, true, true, true, true };
+
 static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
 {
   pos = clampServoPulse(servoIndex, pos);
   maestroSetSpeed(servoIndex, speed);
   maestroSetTarget(servoIndex, pos);
+
+  // Same distance/speed math the Maestro itself uses internally (see the
+  // comment above the SPEED #defines for why VarSpeedServo's old units
+  // carry over 1:1) -- so this is a real completion-time estimate, not
+  // just a guess reused from elsewhere.
+  uint16_t from = servoLastPos[servoIndex];
+  uint16_t distance = (pos > from) ? (pos - from) : (from - pos);
+  uint32_t duration = (speed == 0) ? 0 : (uint32_t)distance * 40UL / speed;
+  servoLastPos[servoIndex] = pos;
+  servoReleaseAt[servoIndex] = millis() + duration + SERVO_RELEASE_MARGIN_MS;
+  servoReleased[servoIndex] = false;
+}
+
+// Called from loop(); releases any channel whose commanded move should
+// have finished at least SERVO_RELEASE_MARGIN_MS ago and hasn't been
+// re-commanded since. A channel mid-sequence (repeatedly re-targeted)
+// never hits this -- only ones that have gone quiet while holding position.
+static inline void releaseIdleServos()
+{
+  unsigned long now = millis();
+  for (uint8_t i = 0; i < NBR_SERVOS; i++) {
+    if (!servoReleased[i] && now >= servoReleaseAt[i]) {
+      maestroSetTarget(i, 0);
+      servoReleased[i] = true;
+    }
+  }
+}
+
+// Pulses RST low briefly then releases it — hard-resets just the Maestro's
+// own microcontroller (not its stored channel config) without touching
+// servos, lights, or vocalizer elsewhere on the droid. For recovering a
+// Maestro that's stopped responding to Compact Protocol entirely; a normal
+// "BD:RESET" can't fix that since it only works by sending more serial
+// commands. See "BD:MRESET" in doCommand().
+static inline void maestroHardReset()
+{
+  digitalWrite(MAESTRO_RST_PIN, LOW);
+  delay(10);
+  digitalWrite(MAESTRO_RST_PIN, HIGH);
+}
+
+// Get Errors (0x A1) — reading the bitmask also clears it on the Maestro,
+// so this both fetches and acknowledges whatever tripped MAESTRO_ERR_PIN.
+static inline uint16_t maestroGetErrors()
+{
+  MaestroSerial.write((uint8_t)0xA1);
+  unsigned long start = millis();
+  while (MaestroSerial.available() < 2) {
+    if (millis() - start > 50) return 0; // timeout - nothing to report
+  }
+  uint8_t lo = MaestroSerial.read();
+  uint8_t hi = MaestroSerial.read();
+  return ((uint16_t)hi << 8) | lo;
+}
+
+// Polled from loop() whenever MAESTRO_ERR_PIN reads HIGH; decodes the
+// bitmask per the Maestro user's guide section 4.e for DEBUG_PRINT output.
+static inline void maestroReportErrors()
+{
+  uint16_t errors = maestroGetErrors();
+  if (errors == 0) return;
+  DEBUG_PRINT(F("Maestro error 0x"));
+  DEBUG_PRINT_LN_DEC(errors, HEX);
+  if (errors & 0x0001) DEBUG_PRINT_LN(F("  Serial Signal Error"));
+  if (errors & 0x0002) DEBUG_PRINT_LN(F("  Serial Overrun Error"));
+  if (errors & 0x0004) DEBUG_PRINT_LN(F("  Serial Buffer Full"));
+  if (errors & 0x0008) DEBUG_PRINT_LN(F("  Serial CRC Error"));
+  if (errors & 0x0010) DEBUG_PRINT_LN(F("  Serial Protocol Error"));
+  if (errors & 0x0020) DEBUG_PRINT_LN(F("  Serial Timeout"));
+  if (errors & 0x0040) DEBUG_PRINT_LN(F("  Script Stack Error"));
+  if (errors & 0x0080) DEBUG_PRINT_LN(F("  Script Call Stack Error"));
+  if (errors & 0x0100) DEBUG_PRINT_LN(F("  Script Program Counter Error"));
 }
 
 //Servo Positions
@@ -169,19 +282,3 @@ static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
 #define RIGHT_DOOR_CLOSE 2000
 #define CBI_DOOR_CLOSE 1780
 #define DATA_DOOR_CLOSE 1650
-
-// Uncomment this if you want Debug output.
-#define DEBUG
-
-//Setup Debug Switch
-#ifdef DEBUG
-#define DEBUG_PRINT_LN(msg)  Serial.println(msg)
-#define DEBUG_PRINT(msg)  Serial.print(msg)
-#define DEBUG_PRINT_LN_DEC(msg, dec_places) Serial.println(msg, dec_places)
-#define DEBUG_PRINT_DEC(msg, dec_places) Serial.print(msg, dec_places)
-#else
-#define DEBUG_PRINT_LN(msg)
-#define DEBUG_PRINT(msg)
-#define DEBUG_PRINT_LN_DEC(msg, dec_places)
-#define DEBUG_PRINT_DEC(msg, dec_places)
-#endif
