@@ -89,6 +89,37 @@ the WCB, forwarded to RGB-DPL (see `sendPanelCommand()` in the .ino).
 **`:OP<nn>` / `:CL<nn>` / `:SE<nn>`** — Marcduino-style panel open/close/sequence
 commands (`nn` = panel number, see `doMarcduinoOpen()`/`doMarcduinoClose()`).
 
+### Panel light on/off
+
+Every door/arm function that opens or closes the CBI or Data Panel doors
+sends `sendPanelCommand("BRIGHTNESS 100")` right before opening and
+`sendPanelCommand("BRIGHTNESS 0")` right after closing — direct port of what
+the old `CBI_SWITCH_PIN`/`DP_SWITCH_PIN` relays did (power the physical
+matrices on/off), just via RGB-DPL's serial command instead of a GPIO. This
+covers `resetServos()`, `openEverything()`, `Doors()`, `openCBIDoor()`,
+`openDataDoor()`, `openCBI_DataDoor()`, the Marcduino panel cases, and the
+performance sequences (`Scream()`, `heart()`, `Flutter()`, `Cantina()`,
+`overload()` — each sends brightness on/off exactly once, at the very start
+and very end, never inside a repeated flap/thump loop, so rapid-fire
+door movement mid-sequence doesn't spam the shared serial line).
+
+One limitation worth knowing: RGB-DPL's `BRIGHTNESS` command is global, not
+per-zone — the old two relays could independently power the CBI matrix and
+the Data Panel matrix, but there's no documented per-zone equivalent here.
+So e.g. `openCBIDoor()` brightening/dimming will affect the whole panel, not
+just the CBI section, even if the Data Panel door is untouched. Revisit if
+RGB-DPL turns out to support per-zone brightness (perhaps via `COLOR
+<section> <R> <G> <B>`) and independent control matters in practice.
+
+**Boot-time race**: RGB-DPL is a separate board that boots independently
+(WiFi/FastLED init, etc.), so the `BRIGHTNESS 0` `resetServos()` sends
+during our own `setup()` can arrive before RGB-DPL's serial listener is
+ready and get dropped — `loop()` resends it once, 3 seconds after power-on,
+as a defensive backstop. If the panel still occasionally comes up lit,
+either bump that delay, or (more robust) set RGB-DPL's own default boot
+profile to start dark (`SAVE`/`DEFAULT` — see its README) so it doesn't
+depend on timing at all.
+
 ### ESTOP
 
 `BD:ESTOP` (or `ESTOP` arriving mid-sequence) sets every servo's target to 0,

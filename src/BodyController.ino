@@ -69,6 +69,17 @@ void loop() {
   if (otaWebServerRunning) webServer.handleClient();
   releaseIdleServos(); // stops holding a channel under power once its move has settled
 
+  // RGB-DPL is a separate board that boots independently (WiFi/FastLED
+  // init, etc.) -- the "BRIGHTNESS 0" resetServos() already sent during our
+  // own setup() can easily arrive before RGB-DPL's serial listener is up,
+  // and gets lost. Resend once, a few seconds in, once it should reliably
+  // be listening, so the panel doesn't come up stuck lit at power-on.
+  static bool bootPanelOffResent = false;
+  if (!bootPanelOffResent && millis() > 3000) {
+    sendPanelCommand("BRIGHTNESS 0");
+    bootPanelOffResent = true;
+  }
+
   // Cheap digitalRead every loop; the actual Get Errors round-trip only
   // happens (at most once/sec) while the Maestro is actively flagging one,
   // so a persistent error can't flood the serial line or the debug console.
@@ -275,6 +286,7 @@ void Cantina() {
   const int TOP_ARM_HALF   = (TOP_ARM_OPEN    + TOP_ARM_CLOSE)    / 2; // ~1215
   const int BOTTOM_ARM_HALF = (BOTTOM_ARM_OPEN + BOTTOM_ARM_CLOSE) / 2; // ~1275
 
+  sendPanelCommand("BRIGHTNESS 100");
   sendPanelCommand("SCHEME CYBERPUNK");
 
   bool evenOpen = true;
@@ -311,6 +323,7 @@ void Cantina() {
   waitTime(1000);
 
   sendPanelCommand("SCHEME CLASSIC");
+  sendPanelCommand("BRIGHTNESS 0");
 
   leftDoorOpen = false;
   rightDoorOpen = false;
@@ -345,6 +358,7 @@ void overload() {
   }
   uint8_t count = random(2, 4); // 2 or 3 panels
 
+  sendPanelCommand("BRIGHTNESS 100");
   sendPanelCommand("CBIMODE 6"); // first-pass guess: a glitchy/erratic mode
 
   // Lost-connection drift: each selected panel sluggishly creeps to a random
@@ -364,6 +378,7 @@ void overload() {
   }
 
   sendPanelCommand("CBIMODE 0");
+  sendPanelCommand("BRIGHTNESS 0");
 
   waitTime(800);
 
@@ -469,6 +484,7 @@ void heart() {
   #define HEARTBEAT_LIFT_2    1540  // lift before second thump (slightly smaller)
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
+  sendPanelCommand("BRIGHTNESS 100");
   sendPanelCommand("CBIMODE 1"); // first-pass guess: a slow pulsing mode
 
   for (int i = 0; i < 3; i++) {
@@ -488,6 +504,7 @@ void heart() {
   }
 
   sendPanelCommand("CBIMODE 0");
+  sendPanelCommand("BRIGHTNESS 0");
 
   digitalWrite(STATUS_LED, LOW);
 }
@@ -509,6 +526,8 @@ void Flutter() {
   const int doorHalf[]     = { RIGHT_DOOR_HALF,      CBI_DOOR_HALF,      DATA_DOOR_HALF,      LEFT_DOOR_HALF      };
   const int doorClose[]    = { RIGHT_DOOR_CLOSE,     CBI_DOOR_CLOSE,     DATA_DOOR_CLOSE,     LEFT_DOOR_CLOSE     };
 
+  sendPanelCommand("BRIGHTNESS 100");
+
   // Wave open, right to left, each door lifting halfway
   for (uint8_t i = 0; i < 4; i++) {
     moveServo(doors[i], doorHalf[i], FLUTTER_SPEED);
@@ -524,6 +543,8 @@ void Flutter() {
   }
 
   waitTime(500); // wait on last door to reach position
+
+  sendPanelCommand("BRIGHTNESS 0");
 
   doorsOpen = false;
   leftDoorOpen = false;
@@ -553,7 +574,7 @@ void resetServos() {
 
   moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  sendPanelCommand("SEQUENCE ON");
+  sendPanelCommand("BRIGHTNESS 0");
 
   waitTime(600); // wait on servos
 
@@ -756,6 +777,7 @@ void Scream() {
 
   playScream();
 
+  sendPanelCommand("BRIGHTNESS 100");
   sendPanelCommand("PERSONALITY EXCITED");
 
   for (int i = 0; i < 7; i++) {
@@ -796,6 +818,7 @@ void Scream() {
   moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
   sendPanelCommand("PERSONALITY NORMAL");
+  sendPanelCommand("BRIGHTNESS 0");
 
   waitTime(1000); // wait on arm to reach position
 
@@ -840,7 +863,7 @@ void Doors() {
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-    sendPanelCommand("SEQUENCE ON");
+    sendPanelCommand("BRIGHTNESS 0");
 
     waitTime(1000); // wait on arm to reach position
 
@@ -912,6 +935,7 @@ void openCBIDoor() {
   if (cbiDoorOpen) {
     DEBUG_PRINT_LN(F("Close Charge Bay Door"));
     cbiDoorOpen = false;
+    sendPanelCommand("BRIGHTNESS 0");
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     waitTime(1000); // wait on door to reach position
@@ -920,6 +944,7 @@ void openCBIDoor() {
     cbiDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay Door"));
 
+    sendPanelCommand("BRIGHTNESS 100");
     moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
@@ -934,6 +959,7 @@ void openDataDoor() {
   if (dataDoorOpen) {
     DEBUG_PRINT_LN(F("Close Data Port Door"));
     dataDoorOpen = false;
+    sendPanelCommand("BRIGHTNESS 0");
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     waitTime(1000); // wait on door to reach position
@@ -942,6 +968,7 @@ void openDataDoor() {
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Data Port Door"));
 
+    sendPanelCommand("BRIGHTNESS 100");
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
@@ -964,6 +991,7 @@ void openCBI_DataDoor() {
     cbiDoorOpen = false;
     dataDoorOpen = false;
 
+    sendPanelCommand("BRIGHTNESS 0");
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
@@ -975,6 +1003,7 @@ void openCBI_DataDoor() {
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay & Data Door"));
 
+    sendPanelCommand("BRIGHTNESS 100");
     moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
@@ -1014,20 +1043,20 @@ void sendPanelCommand(const char* cmd) {
 // DP<val>\n  — data panel command (from WCB, forwarded to RGB-DPL)
 // val encoding (legacy, kept for compatibility with existing WCB behavior):
 // (seq * 10000) + (speed * 100) + duration_seconds.
-// seq 0 = resume normal animation, seq 1 = go dark/disabled.
-// First-pass mapping: both collapse to RGB-DPL's global SEQUENCE toggle,
-// since CB/DP no longer address two separate physical displays the way the
-// old MAX7219 matrices did, and speed/duration have no direct RGB-DPL
+// seq 0 = resume normal animation (bright), seq 1 = go dark/disabled.
+// First-pass mapping: both collapse to RGB-DPL's global BRIGHTNESS, since
+// CB/DP no longer address two separate physical displays the way the old
+// MAX7219 matrices did, and speed/duration have no direct RGB-DPL
 // equivalent yet. Revisit once you've been through the full RGB-DPL manual
 // for finer per-panel control (CBIMODE/LDPLMODE/SCHEME).
 void doCBILEDCommand(long val) {
   uint8_t seq = (uint8_t)(val / 10000);
-  sendPanelCommand(seq == 1 ? "SEQUENCE OFF" : "SEQUENCE ON");
+  sendPanelCommand(seq == 1 ? "BRIGHTNESS 0" : "BRIGHTNESS 100");
 }
 
 void doDPLEDCommand(long val) {
   uint8_t seq = (uint8_t)(val / 10000);
-  sendPanelCommand(seq == 1 ? "SEQUENCE OFF" : "SEQUENCE ON");
+  sendPanelCommand(seq == 1 ? "BRIGHTNESS 0" : "BRIGHTNESS 100");
 }
 
 // Marcduino body panel numbering used here:
@@ -1076,12 +1105,14 @@ void doMarcduinoOpen(uint8_t panel) {
     case 5:
       if (cbiDoorOpen) return;
       cbiDoorOpen = true;
+      sendPanelCommand("BRIGHTNESS 100");
       moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
       waitTime(900);
       break;
     case 6:
       if (dataDoorOpen) return;
       dataDoorOpen = true;
+      sendPanelCommand("BRIGHTNESS 100");
       moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
       waitTime(900);
       break;
@@ -1097,7 +1128,7 @@ void doMarcduinoClose(uint8_t panel) {
       moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      sendPanelCommand("SEQUENCE ON");
+      sendPanelCommand("BRIGHTNESS 0");
       waitTime(900);
       topUtilityArmOpen = false; bottomUtilityArmOpen = false; utilityArmOpen = false;
       leftDoorOpen = false; rightDoorOpen = false;
@@ -1131,12 +1162,14 @@ void doMarcduinoClose(uint8_t panel) {
     case 5:
       if (!cbiDoorOpen) return;
       cbiDoorOpen = false;
+      sendPanelCommand("BRIGHTNESS 0");
       moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       waitTime(900);
       break;
     case 6:
       if (!dataDoorOpen) return;
       dataDoorOpen = false;
+      sendPanelCommand("BRIGHTNESS 0");
       moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       waitTime(900);
       break;
