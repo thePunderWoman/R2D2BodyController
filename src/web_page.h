@@ -219,10 +219,24 @@ static void handleUpdatePost()
   }
 }
 
-// Self-hosted AP (no external router dependency) + mDNS + the three routes
-// above. Call once from setup().
+bool otaWebServerRunning = false;
+
+// Route handlers only need registering once; WiFi radio and the server
+// socket are what actually get started/stopped by WIFION/WIFIOFF.
+static void setupOTARoutes()
+{
+  webServer.on("/", HTTP_GET, handleRoot);
+  webServer.on("/api/info", HTTP_GET, handleApiInfo);
+  webServer.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
+}
+
+// Self-hosted AP (no external router dependency) + mDNS + web server. Call
+// once from setup(), and again any time WiFi is re-enabled after
+// stopOTAWebServer() (see "BD:WIFION" / "BD:WIFIOFF" in doCommand()).
 static void startOTAWebServer()
 {
+  if (otaWebServerRunning) return;
+
   WiFi.mode(WIFI_AP);
   WiFi.softAP(OTA_AP_SSID, OTA_AP_PASSWORD);
   DEBUG_PRINT_LN(F("[WiFi] AP started: " OTA_AP_SSID));
@@ -232,10 +246,22 @@ static void startOTAWebServer()
     DEBUG_PRINT_LN(F("[WiFi] mDNS: http://bodycontroller.local/"));
   }
 
-  webServer.on("/", HTTP_GET, handleRoot);
-  webServer.on("/api/info", HTTP_GET, handleApiInfo);
-  webServer.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
   webServer.begin();
+  otaWebServerRunning = true;
+}
+
+// Fully powers down the WiFi radio — for cutting RF noise during normal
+// operation. OTA updates are unavailable until "BD:WIFION" brings it back.
+static void stopOTAWebServer()
+{
+  if (!otaWebServerRunning) return;
+
+  webServer.stop();
+  MDNS.end();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  otaWebServerRunning = false;
+  DEBUG_PRINT_LN(F("[WiFi] AP stopped"));
 }
 
 #endif

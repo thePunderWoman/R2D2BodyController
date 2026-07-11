@@ -53,7 +53,8 @@ Three command styles arrive on UART0, all originating from the WCB:
 
 | Command | Description |
 |---|---|
-| `ESTOP` | Freeze every servo exactly where it is and block forever (see below) |
+| `ESTOP` | Release every servo (goes limp/unpowered) and block forever (see below) |
+| `WIFI` / `WIFI0` / `WIFI1` | Toggle / disable / enable the WiFi AP + OTA update server — starts on at boot, turn off to cut RF noise during a show. Matches the `#APWIFI[0\|1]` / `#PWIFI[0\|1]` convention on AstroPixelsPlus and the Periscope |
 | `RESET` | Close all doors/arms, reset vocalizer |
 | `OPENALL` | Open all doors and utility arms |
 | `DOORS` | Toggle all four doors |
@@ -88,10 +89,10 @@ commands (`nn` = panel number, see `doMarcduinoOpen()`/`doMarcduinoClose()`).
 
 ### ESTOP
 
-`BD:ESTOP` (or `ESTOP` arriving mid-sequence) reads back each servo's exact
-current position from the Maestro and re-targets it there at zero speed,
-freezing every servo in place under power, then blocks forever. The only way
-out is power-cycling or sending `BD:RESET`, which reboots the board via
+`BD:ESTOP` (or `ESTOP` arriving mid-sequence) sets every servo's target to 0,
+which tells the Maestro to stop pulsing those channels entirely — servos go
+limp/unpowered rather than being held in place — then blocks forever. The
+only way out is power-cycling or sending `BD:RESET`, which reboots the board via
 `ESP.restart()`.
 
 ## Configuration

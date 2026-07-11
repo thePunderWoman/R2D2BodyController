@@ -54,14 +54,15 @@ void setup()
   DEBUG_PRINT(F("Activating Servos"));
   resetServos();
 
-  startOTAWebServer(); // WiFi AP + mDNS + /update, see web_page.h
+  setupOTARoutes(); // registers / , /api/info, /update — see web_page.h
+  startOTAWebServer(); // WiFi AP + mDNS + web server; "BD:WIFIOFF" tears this back down
 
   DEBUG_PRINT_LN(F("Setup Complete"));
 }
 
 void loop() {
   readSerial();
-  webServer.handleClient();
+  if (otaWebServerRunning) webServer.handleClient();
 }
 
 //----------------------------------------------------------------------------
@@ -375,26 +376,20 @@ void alarm() {
 //----------------------------------------------------------------------------
 //  E S T O P  —  emergency stop
 //----------------------------------------------------------------------------
-// Freezes every attached servo exactly where it is, right now, and then
-// blocks forever — no other command, sequence, or LED update runs again.
-// The only way out is "BD:RESET", which reboots the board (see softReset
-// above) rather than trying to resume whatever was interrupted. Never
-// returns.
+// Releases every servo (goes limp/unpowered, no fighting the Maestro to hold
+// a position) and then blocks forever — no other command, sequence, or panel
+// update runs again. The only way out is "BD:RESET", which reboots the board
+// (see softReset above) rather than trying to resume whatever was
+// interrupted. Never returns.
 void performEStop() {
-  DEBUG_PRINT_LN(F("!!! ESTOP - freezing all servos in place !!!"));
+  DEBUG_PRINT_LN(F("!!! ESTOP - releasing all servos !!!"));
 
-  // Unlike VarSpeedServo/ReelTwo, the Maestro doesn't hold position just
-  // because we stop commanding it — a channel keeps ramping toward whatever
-  // target/speed it was last given. So freezing here means explicitly
-  // reading back each channel's exact current position and re-targeting it
-  // there with speed 0 (uncapped), which snaps it to a dead stop right where
-  // it is and holds it under power indefinitely.
+  // Set Target 0 tells the Maestro to stop sending pulses on that channel
+  // entirely — the servo goes limp/unpowered rather than being held in
+  // place. No need to read back position or fight the Maestro's own
+  // interpolation; this is just its normal "channel off" behavior.
   for (uint8_t i = 0; i < NBR_SERVOS; i++) {
-    uint16_t pos = maestroGetPosition(i);
-    if (pos > 0) {
-      maestroSetSpeed(i, 0);
-      maestroSetTarget(i, pos);
-    }
+    maestroSetTarget(i, 0);
   }
 
   digitalWrite(STATUS_LED, HIGH); // solid on = estopped; send RESET to clear
@@ -1180,6 +1175,24 @@ void doCommand(const char* cmd) {
 
   if (strcmp(cmd, "ESTOP") == 0) {
     performEStop(); // never returns
+  } else if (strncmp(cmd, "WIFI", 4) == 0) {
+    // WIFI0 = off, WIFI1 = on, bare WIFI = toggle — matches the
+    // #APWIFI[0|1] / #PWIFI[0|1] convention used by AstroPixelsPlus and the
+    // Periscope, just under our own BD: prefix.
+    char suffix = cmd[4];
+    if (suffix == '0') {
+      DEBUG_PRINT_LN(F("WiFi off"));
+      stopOTAWebServer();
+    } else if (suffix == '1') {
+      DEBUG_PRINT_LN(F("WiFi on"));
+      startOTAWebServer();
+    } else if (otaWebServerRunning) {
+      DEBUG_PRINT_LN(F("WiFi off"));
+      stopOTAWebServer();
+    } else {
+      DEBUG_PRINT_LN(F("WiFi on"));
+      startOTAWebServer();
+    }
   } else if (strcmp(cmd, "RESET") == 0) {
     DEBUG_PRINT_LN(F("Got reset message"));
     resetServos();

@@ -148,22 +148,6 @@ static inline void maestroSetSpeed(uint8_t channel, uint16_t speed)
   MaestroSerial.write(buf, 4);
 }
 
-// Get Position (0x90) — blocks briefly for the Maestro's 2-byte reply. Only
-// used by performEStop() to read exactly where a channel is before locking
-// it there; nothing else in normal sequence playback needs a round trip.
-static inline uint16_t maestroGetPosition(uint8_t channel)
-{
-  uint8_t cmd[2] = { 0x90, channel };
-  MaestroSerial.write(cmd, 2);
-  unsigned long start = millis();
-  while (MaestroSerial.available() < 2) {
-    if (millis() - start > 50) return 0; // timeout - treat as "unknown"
-  }
-  uint8_t lo = MaestroSerial.read();
-  uint8_t hi = MaestroSerial.read();
-  return (((uint16_t)hi << 7) | lo) / 4; // quarter-microseconds -> microseconds
-}
-
 static inline void moveServo(uint8_t servoIndex, uint16_t pos, uint8_t speed)
 {
   pos = clampServoPulse(servoIndex, pos);
