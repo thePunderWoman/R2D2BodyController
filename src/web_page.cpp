@@ -1,21 +1,10 @@
-// web_page.h — wireless firmware update page + OTA plumbing.
-//
-// Single self-hosted page (no external CSS/JS/font dependencies — the
-// browser is connected to this device's own WiFi AP, which has no internet
-// route). Pattern ported from ~/repos/Amidala's web/update.html and
-// src/wifi_ap.cpp OTA handlers, trimmed down since Body Controller only
-// needs this one page (Amidala's ~18-page setup uses a build-time embed
-// script that isn't worth the overhead here).
-
-#ifndef web_page_h
-#define web_page_h
-
-#include <WiFi.h>
-#include <WebServer.h>
+#include "web_page.h"
 #include <Update.h>
 #include <ESPmDNS.h>
+#include "config.h"
 
 WebServer webServer(80);
+bool otaWebServerRunning = false;
 
 static const char UPDATE_PAGE[] PROGMEM = R"HTMLPAGE(
 <!DOCTYPE html>
@@ -219,21 +208,14 @@ static void handleUpdatePost()
   }
 }
 
-bool otaWebServerRunning = false;
-
-// Route handlers only need registering once; WiFi radio and the server
-// socket are what actually get started/stopped by WIFION/WIFIOFF.
-static void setupOTARoutes()
+void setupOTARoutes()
 {
   webServer.on("/", HTTP_GET, handleRoot);
   webServer.on("/api/info", HTTP_GET, handleApiInfo);
   webServer.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
 }
 
-// Self-hosted AP (no external router dependency) + mDNS + web server. Call
-// once from setup(), and again any time WiFi is re-enabled after
-// stopOTAWebServer() (see "BD:WIFION" / "BD:WIFIOFF" in doCommand()).
-static void startOTAWebServer()
+void startOTAWebServer()
 {
   if (otaWebServerRunning) return;
 
@@ -250,9 +232,7 @@ static void startOTAWebServer()
   otaWebServerRunning = true;
 }
 
-// Fully powers down the WiFi radio — for cutting RF noise during normal
-// operation. OTA updates are unavailable until "BD:WIFION" brings it back.
-static void stopOTAWebServer()
+void stopOTAWebServer()
 {
   if (!otaWebServerRunning) return;
 
@@ -263,5 +243,3 @@ static void stopOTAWebServer()
   otaWebServerRunning = false;
   DEBUG_PRINT_LN(F("[WiFi] AP stopped"));
 }
-
-#endif
