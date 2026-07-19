@@ -8,6 +8,5 @@ void sendBusCommand(const char* cmd) {
   // that's what gets eaten instead of the first character of a real
   // command (which is what was showing up as a stray leading byte on
   // RGB-DPL's console, e.g. "ALLON" arriving as garbage+"ALLON").
-  COMMAND_SERIAL.print('\n');
-  COMMAND_SERIAL.println(cmd);
+  COMMAND_SERIAL.printf("\n%s\r\n", cmd);
 }

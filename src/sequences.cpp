@@ -95,8 +95,6 @@ void Throne() {
 void Cantina() {
   digitalWrite(STATUS_LED, HIGH);
 
-  playCantina();
-
   // Doors alternate open/closed in time with the beat (130 BPM = ~461 ms/beat).
   // Left-to-right order: LEFT, DATA, CBI, RIGHT.
   // Even positions (LEFT, CBI) open while odd positions (DATA, RIGHT) close, then flip.
@@ -110,6 +108,8 @@ void Cantina() {
 
   sendBusCommand("ALLON");
   sendBusCommand("SCHEME CYBERPUNK");
+
+  playCantina();
 
   bool evenOpen = true;
   unsigned long endTime = millis() + DURATION;
@@ -163,8 +163,6 @@ void Cantina() {
 void overload() {
   digitalWrite(STATUS_LED, HIGH);
 
-  overloadEmote();
-
   randomSeed(analogRead(0));
 
   const uint8_t NUM_PANELS = 6;
@@ -182,6 +180,8 @@ void overload() {
 
   sendBusCommand("ALLON");
   sendBusCommand("CBIMODE 6"); // first-pass guess: a glitchy/erratic mode
+
+  overloadEmote();
 
   // Lost-connection drift: each selected panel sluggishly creeps to a random
   // position up to halfway open, then stops as if it lost signal.
@@ -243,8 +243,6 @@ void stepBack() {
 void heart() {
   digitalWrite(STATUS_LED, HIGH);
 
-  playLove();
-
   // Heartbeat: thump-thump...thump-thump...thump-thump
   // Door lifts open then snaps closed — the snap IS the thump.
   // 1780=closed against body, 1200=fully open. Lifts ~halfway open for a visible pulse.
@@ -254,6 +252,8 @@ void heart() {
 
   sendBusCommand("CBION");
   sendBusCommand("CBIMODE 4"); // heart shape in red
+
+  playLove();
 
   for (int i = 0; i < 3; i++) {
     // lift then snap shut — first thump; flash heart on the snap
@@ -331,10 +331,10 @@ void Scream() {
 
   digitalWrite(STATUS_LED, HIGH);
 
-  playScream();
-
   sendBusCommand("ALLON");
   sendBusCommand("PERSONALITY EXCITED");
+
+  playScream();
 
   for (int i = 0; i < 7; i++) {
 
