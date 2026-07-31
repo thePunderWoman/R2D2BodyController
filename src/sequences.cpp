@@ -15,6 +15,20 @@ void Leia() {
 
   playLeia();
 
+  waitTime(3000); // wait 3 seconds
+  enableMuse();
+
+  digitalWrite(STATUS_LED, LOW);
+}
+
+void LeiaFull() {
+  digitalWrite(STATUS_LED, HIGH);
+
+  disableMuse();
+  HCR.StopEmote();
+
+  playLeia();
+
   waitTime(40000); // wait 40 seconds
   enableMuse();
 

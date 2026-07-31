@@ -3,6 +3,7 @@
 #pragma once
 
 void Leia();
+void LeiaFull();
 void Vader();
 void RockMarch();
 void Disco();

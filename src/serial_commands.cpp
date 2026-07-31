@@ -226,6 +226,7 @@ static const SerialCommand COMMAND_TABLE[] = {
   {"CANTINA", Cantina},
   {"SCREAM", Scream},
   {"LEIA", Leia},
+  {"LEIAFULL", LeiaFull},
   {"OVERLOAD", overload},
   {"UARMS", UtilityArms},
   {"DOORS", Doors},

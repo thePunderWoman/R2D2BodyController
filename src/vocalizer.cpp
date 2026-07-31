@@ -83,6 +83,10 @@ void playStepBack() {
   HCR.PlayWAV(CH_A, "0017");
 }
 
+void playLeiaFull() {
+  HCR.PlayWAV(CH_A, "0018");
+}
+
 // Emote Events
 
 void enableMuse() {

@@ -8,6 +8,7 @@ extern HCRVocalizer HCR;
 
 void playScream();
 void playLeia();
+void playLeiaFull();
 void playSWTheme();
 void playSWThemeFull();
 void playCantina();
