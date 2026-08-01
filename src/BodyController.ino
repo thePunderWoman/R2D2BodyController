@@ -12,6 +12,7 @@
 #include "sequences.h"
 #include "serial_commands.h"
 #include "web_page.h"
+#include "wcb_mesh.h"
 
 void setup()
 {
@@ -41,11 +42,14 @@ void setup()
   setupOTARoutes(); // registers / , /api/info, /update — see web_page.h
   startOTAWebServer(); // WiFi AP + mDNS + web server; "BD:WIFIOFF" tears this back down
 
+  beginWCBMesh(); // after the OTA AP is up so ESP-NOW can ride its channel
+
   DEBUG_PRINT_LN(F("Setup Complete"));
 }
 
 void loop() {
   readSerial();
+  updateWCBMesh();
   if (otaWebServerRunning) webServer.handleClient();
   releaseIdleServos(); // stops holding a channel under power once its move has settled
 

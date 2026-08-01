@@ -120,8 +120,8 @@ void Cantina() {
   const int TOP_ARM_HALF   = (TOP_ARM_OPEN    + TOP_ARM_CLOSE)    / 2; // ~1215
   const int BOTTOM_ARM_HALF = (BOTTOM_ARM_OPEN + BOTTOM_ARM_CLOSE) / 2; // ~1275
 
-  sendBusCommand("ALLON");
-  sendBusCommand("SCHEME CYBERPUNK");
+  sendPanelLightCommand("ALLON");
+  sendPanelLightCommand("SCHEME CYBERPUNK");
 
   playCantina();
 
@@ -158,8 +158,8 @@ void Cantina() {
 
   waitTime(1000);
 
-  sendBusCommand("SCHEME CLASSIC");
-  sendBusCommand("ALLOFF");
+  sendPanelLightCommand("SCHEME CLASSIC");
+  sendPanelLightCommand("ALLOFF");
 
   leftDoorOpen = false;
   rightDoorOpen = false;
@@ -192,8 +192,8 @@ void overload() {
   }
   uint8_t count = random(2, 4); // 2 or 3 panels
 
-  sendBusCommand("ALLON");
-  sendBusCommand("CBIMODE 6"); // first-pass guess: a glitchy/erratic mode
+  sendPanelLightCommand("ALLON");
+  sendPanelLightCommand("CBIMODE 6"); // first-pass guess: a glitchy/erratic mode
 
   overloadEmote();
 
@@ -213,8 +213,8 @@ void overload() {
     moveServo(panels[order[i]], panelClose[order[i]], SCREAM_SPEED);
   }
 
-  sendBusCommand("CBIMODE 0");
-  sendBusCommand("ALLOFF");
+  sendPanelLightCommand("CBIMODE 0");
+  sendPanelLightCommand("ALLOFF");
 
   waitTime(800);
 
@@ -264,8 +264,8 @@ void heart() {
   #define HEARTBEAT_LIFT_2    1540  // lift before second thump (slightly smaller)
   #define HEARTBEAT_SPEED      200  // fast snap for a crisp thump
 
-  sendBusCommand("CBION");
-  sendBusCommand("CBIMODE 4"); // heart shape in red
+  sendPanelLightCommand("CBION");
+  sendPanelLightCommand("CBIMODE 4"); // heart shape in red
 
   playLove();
 
@@ -285,8 +285,8 @@ void heart() {
     waitTime(700);
   }
 
-  sendBusCommand("CBIMODE 0");
-  sendBusCommand("CBIOFF");
+  sendPanelLightCommand("CBIMODE 0");
+  sendPanelLightCommand("CBIOFF");
 
   digitalWrite(STATUS_LED, LOW);
 }
@@ -308,7 +308,7 @@ void Flutter() {
   const int doorHalf[]     = { RIGHT_DOOR_HALF,      CBI_DOOR_HALF,      DATA_DOOR_HALF,      LEFT_DOOR_HALF      };
   const int doorClose[]    = { RIGHT_DOOR_CLOSE,     CBI_DOOR_CLOSE,     DATA_DOOR_CLOSE,     LEFT_DOOR_CLOSE     };
 
-  sendBusCommand("ALLON");
+  sendPanelLightCommand("ALLON");
 
   // Wave open, right to left, each door lifting halfway
   for (uint8_t i = 0; i < 4; i++) {
@@ -326,7 +326,7 @@ void Flutter() {
 
   waitTime(500); // wait on last door to reach position
 
-  sendBusCommand("ALLOFF");
+  sendPanelLightCommand("ALLOFF");
 
   doorsOpen = false;
   leftDoorOpen = false;
@@ -345,8 +345,8 @@ void Scream() {
 
   digitalWrite(STATUS_LED, HIGH);
 
-  sendBusCommand("ALLON");
-  sendBusCommand("PERSONALITY EXCITED");
+  sendPanelLightCommand("ALLON");
+  sendPanelLightCommand("PERSONALITY EXCITED");
 
   playScream();
 
@@ -387,8 +387,8 @@ void Scream() {
   moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
   moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  sendBusCommand("PERSONALITY NORMAL");
-  sendBusCommand("ALLOFF");
+  sendPanelLightCommand("PERSONALITY NORMAL");
+  sendPanelLightCommand("ALLOFF");
 
   waitTime(1000); // wait on arm to reach position
 

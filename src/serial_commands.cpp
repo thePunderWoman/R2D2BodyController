@@ -22,12 +22,12 @@ unsigned long loopTime; // Time variable
 // ALLON/ALLOFF. speed/duration still have no direct RGB-DPL equivalent.
 static void doCBILEDCommand(long val) {
   uint8_t seq = (uint8_t)(val / 10000);
-  sendBusCommand(seq == 1 ? "CBIOFF" : "CBION");
+  sendPanelLightCommand(seq == 1 ? "CBIOFF" : "CBION");
 }
 
 static void doDPLEDCommand(long val) {
   uint8_t seq = (uint8_t)(val / 10000);
-  sendBusCommand(seq == 1 ? "DPOFF" : "DPON");
+  sendPanelLightCommand(seq == 1 ? "DPOFF" : "DPON");
 }
 
 // Marcduino body panel numbering used here:
@@ -42,7 +42,7 @@ static void doMarcduinoOpen(uint8_t panel) {
       moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
       moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
       moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
-      sendBusCommand("ALLON");
+      sendPanelLightCommand("ALLON");
       waitTime(900);
       topUtilityArmOpen = true; bottomUtilityArmOpen = true; utilityArmOpen = true;
       leftDoorOpen = true; rightDoorOpen = true;
@@ -76,14 +76,14 @@ static void doMarcduinoOpen(uint8_t panel) {
     case 5:
       if (cbiDoorOpen) return;
       cbiDoorOpen = true;
-      sendBusCommand("CBION");
+      sendPanelLightCommand("CBION");
       moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
       waitTime(900);
       break;
     case 6:
       if (dataDoorOpen) return;
       dataDoorOpen = true;
-      sendBusCommand("DPON");
+      sendPanelLightCommand("DPON");
       moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
       waitTime(900);
       break;
@@ -99,7 +99,7 @@ static void doMarcduinoClose(uint8_t panel) {
       moveServo(RIGHT_DOOR, RIGHT_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
-      sendBusCommand("ALLOFF");
+      sendPanelLightCommand("ALLOFF");
       waitTime(900);
       topUtilityArmOpen = false; bottomUtilityArmOpen = false; utilityArmOpen = false;
       leftDoorOpen = false; rightDoorOpen = false;
@@ -133,14 +133,14 @@ static void doMarcduinoClose(uint8_t panel) {
     case 5:
       if (!cbiDoorOpen) return;
       cbiDoorOpen = false;
-      sendBusCommand("CBIOFF");
+      sendPanelLightCommand("CBIOFF");
       moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       waitTime(900);
       break;
     case 6:
       if (!dataDoorOpen) return;
       dataDoorOpen = false;
-      sendBusCommand("DPOFF");
+      sendPanelLightCommand("DPOFF");
       moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
       waitTime(900);
       break;

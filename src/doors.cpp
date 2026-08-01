@@ -32,7 +32,7 @@ void resetServos() {
 
   moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-  sendBusCommand("ALLOFF");
+  sendPanelLightCommand("ALLOFF");
 
   waitTime(600); // wait on servos
 
@@ -71,7 +71,7 @@ void openEverything() {
 
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
-    sendBusCommand("ALLON");
+    sendPanelLightCommand("ALLON");
 
     waitTime(1000); // wait on servos
 
@@ -254,7 +254,7 @@ void Doors() {
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
-    sendBusCommand("ALLOFF");
+    sendPanelLightCommand("ALLOFF");
 
     waitTime(1000); // wait on arm to reach position
 
@@ -267,7 +267,7 @@ void Doors() {
     cbiDoorOpen = true;
     dataDoorOpen = true;
 
-    sendBusCommand("ALLON");
+    sendPanelLightCommand("ALLON");
 
     moveServo(LEFT_DOOR, LEFT_DOOR_OPEN, DOOR_OPEN_SPEED);
     moveServo(RIGHT_DOOR, RIGHT_DOOR_OPEN, DOOR_OPEN_SPEED);
@@ -326,7 +326,7 @@ void openCBIDoor() {
   if (cbiDoorOpen) {
     DEBUG_PRINT_LN(F("Close Charge Bay Door"));
     cbiDoorOpen = false;
-    sendBusCommand("CBIOFF");
+    sendPanelLightCommand("CBIOFF");
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     waitTime(1000); // wait on door to reach position
@@ -335,7 +335,7 @@ void openCBIDoor() {
     cbiDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay Door"));
 
-    sendBusCommand("CBION");
+    sendPanelLightCommand("CBION");
     moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
@@ -350,7 +350,7 @@ void openDataDoor() {
   if (dataDoorOpen) {
     DEBUG_PRINT_LN(F("Close Data Port Door"));
     dataDoorOpen = false;
-    sendBusCommand("DPOFF");
+    sendPanelLightCommand("DPOFF");
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
     waitTime(1000); // wait on door to reach position
@@ -359,7 +359,7 @@ void openDataDoor() {
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Data Port Door"));
 
-    sendBusCommand("DPON");
+    sendPanelLightCommand("DPON");
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 
     waitTime(1000);
@@ -382,7 +382,7 @@ void openCBI_DataDoor() {
     cbiDoorOpen = false;
     dataDoorOpen = false;
 
-    sendBusCommand("ALLOFF");
+    sendPanelLightCommand("ALLOFF");
     moveServo(CBI_DOOR, CBI_DOOR_CLOSE, DOOR_CLOSE_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_CLOSE, DOOR_CLOSE_SPEED);
 
@@ -394,7 +394,7 @@ void openCBI_DataDoor() {
     dataDoorOpen = true;
     DEBUG_PRINT_LN(F("Open Charge Bay & Data Door"));
 
-    sendBusCommand("ALLON");
+    sendPanelLightCommand("ALLON");
     moveServo(CBI_DOOR, CBI_DOOR_OPEN, DOOR_OPEN_SPEED);
     moveServo(DATA_DOOR, DATA_DOOR_OPEN, DOOR_OPEN_SPEED);
 

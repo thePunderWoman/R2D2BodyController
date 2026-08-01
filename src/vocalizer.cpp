@@ -12,79 +12,79 @@ void playScream() {
  *
  */
 void playLeia() {
-  HCR.PlayWAV(CH_A, "0000");
+  HCR.PlayWAV(CH_A, 0);
 }
 
 void playSWTheme() {
-  HCR.PlayWAV(CH_A, "0001");
+  HCR.PlayWAV(CH_A, 1);
 }
 
 void playSWThemeFull() {
-  HCR.PlayWAV(CH_A, "0002");
+  HCR.PlayWAV(CH_A, 2);
 }
 
 void playCantina() {
-  HCR.PlayWAV(CH_A, "0003");
+  HCR.PlayWAV(CH_A, 3);
 }
 
 void playCantinaFull() {
-  HCR.PlayWAV(CH_A, "0004");
+  HCR.PlayWAV(CH_A, 4);
 }
 
 void playVader() {
-  HCR.PlayWAV(CH_A, "0005");
+  HCR.PlayWAV(CH_A, 5);
 }
 
 void playVaderFull() {
-  HCR.PlayWAV(CH_A, "0006");
+  HCR.PlayWAV(CH_A, 6);
 }
 
 void playDuel() {
-  HCR.PlayWAV(CH_A, "0007");
+  HCR.PlayWAV(CH_A, 7);
 }
 
 void playThrone() {
-  HCR.PlayWAV(CH_A, "0008");
+  HCR.PlayWAV(CH_A, 8);
 }
 
 void playClones() {
-  HCR.PlayWAV(CH_A, "0009");
+  HCR.PlayWAV(CH_A, 9);
 }
 
 void playLukeJabba() {
-  HCR.PlayWAV(CH_A, "0010");
+  HCR.PlayWAV(CH_A, 10);
 }
 
 void playHello() {
-  HCR.PlayWAV(CH_A, "0011");
+  HCR.PlayWAV(CH_A, 11);
 }
 
 void playImperialAlarm() {
-  HCR.PlayWAV(CH_A, "0012");
+  HCR.PlayWAV(CH_A, 12);
 }
 
 void playBattleAlarm() {
-  HCR.PlayWAV(CH_A, "0013");
+  HCR.PlayWAV(CH_A, 13);
 }
 
 void playLove() {
-  HCR.PlayWAV(CH_A, "0014");
+  HCR.PlayWAV(CH_A, 14);
 }
 
 void playRockMarch() {
-  HCR.PlayWAV(CH_A, "0015");
+  HCR.PlayWAV(CH_A, 15);
 }
 
 void playDisco() {
-  HCR.PlayWAV(CH_A, "0016");
+  HCR.PlayWAV(CH_A, 16);
 }
 
 void playStepBack() {
-  HCR.PlayWAV(CH_A, "0017");
+  HCR.PlayWAV(CH_A, 17);
 }
 
 void playLeiaFull() {
-  HCR.PlayWAV(CH_A, "0018");
+  HCR.PlayWAV(CH_A, 18);
 }
 
 // Emote Events
