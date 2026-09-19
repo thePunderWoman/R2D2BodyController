@@ -11,7 +11,7 @@ firmware talks to over serial rather than drives directly.
 - **Microcontroller:** ESP32-C3 SuperMini (`nologo_esp32c3_super_mini`)
 - **Servos (6):** Left door, right door, top utility arm, bottom utility arm, CBI door, data panel door — driven by a Pololu Mini Maestro 12 over UART1 (Compact Protocol), not by this board's own GPIOs
 - **Lights:** [RGB-DPL](https://github.com/thePunderWoman/RGB-DPL-Firmware), a separate ESP32-S3 board driving WS2811/WS2812 panels — controlled via plain-text serial commands forwarded over UART0
-- **Audio:** HCR Vocalizer (external Teensy 4.1 + Audio Shield) via serial, sharing UART0
+- **Audio:** HCR Vocalizer (external Teensy 4.1 + Audio Shield), owned by a WCB running its native HCR mode (`?HCR,PORT,Sx:baud`, firmware 6.1.0+). Commands are wrapped as `;H,RAW,<frame>` and unicast to `WCB_HCR_TARGET_WCB` over the WCB mesh, falling back to UART0. Put the HCR on WCB S1/S2 (hardware UARTs); S3–S5 are bit-banged 9600 baud and corrupt HCR traffic.
 - **Communication:**
   - UART0 — WCB commands in, HCR vocalizer commands out, RGB-DPL panel commands out (one shared trunk)
   - UART1 — Pololu Maestro Compact Protocol

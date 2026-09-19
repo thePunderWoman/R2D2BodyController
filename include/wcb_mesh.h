@@ -1,7 +1,8 @@
 // wcb_mesh.h — owns the WCB_Client ESP-NOW mesh connection Body Controller
 // uses to unicast commands directly to their destination boards instead of
 // sharing the WCBSerial trunk with everything else on it:
-//   - HCR audio commands -> WCB_HCR_TARGET_WCB/PORT (see wcb_hcr_transport.h)
+//   - HCR audio commands -> WCB_HCR_TARGET_WCB, wrapped as ";H,RAW,<frame>"
+//     for that WCB's native HCR handling (see wcb_hcr_transport.h)
 //   - RGB-DPL panel commands -> WCB_PANEL_TARGET_ID (see sendPanelCommandViaMesh)
 // Both fall back to WCBSerial automatically whenever the mesh isn't joined
 // or a send fails, so audio/lighting keep working even with WiFi off.
@@ -14,6 +15,12 @@ void beginWCBMesh();
 
 // Call every loop() iteration -- required by WCB_Client's own contract.
 void updateWCBMesh();
+
+// Unicasts one already-wrapped HCR line (";H,RAW,<frame>") to WCB_HCR_TARGET_WCB
+// over the mesh. Returns true if handed off; false if the mesh isn't joined or
+// that WCB is offline (caller writes the same line to UART0 instead -- never a
+// bare frame, see wcb_hcr_transport.h).
+bool sendHcrViaMesh(const char *line);
 
 // Unicasts cmd as a text command to the RGB-DPL panel lights over the mesh.
 // Returns true if handed off (caller should skip the WCBSerial write);

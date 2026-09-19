@@ -62,7 +62,9 @@
 // UART0 — shared trunk: WCB commands in, periscope commands out
 // (sendBusCommand() in bus.cpp), and the fallback path for HCR vocalizer
 // and RGB-DPL panel commands when their WCB mesh unicast isn't reachable
-// (see wcb_hcr_transport.h and sendPanelLightCommand() in bus.cpp).
+// (see wcb_hcr_transport.h and sendPanelLightCommand() in bus.cpp). HCR
+// commands are wrapped as ";H,RAW,<frame>" on this path too, for the WCB's
+// native HCR handling.
 // These are the conventional default UART0 pins on ESP32-C3 boards; verify
 // against your SuperMini's silkscreen. The HardwareSerial object itself
 // lives in bus.h/bus.cpp.
@@ -166,6 +168,6 @@
 // identity (octets/password/quantity/this board's own device id) lives in
 // wcb_secrets.h, not here — see wcb_secrets.h.example.
 // -------------------------------------------------
-#define WCB_HCR_TARGET_WCB   1  // physical WCB the HCR audio board's serial input is wired to
-#define WCB_HCR_TARGET_PORT  3  // serial port on that WCB
+#define WCB_HCR_TARGET_WCB   1  // WCB that owns the HCR board via ?HCR,PORT,Sx:baud (native HCR, firmware 6.1.0+;
+                                // the serial port is configured on the WCB itself, not here)
 #define WCB_PANEL_TARGET_ID  4  // RGB-DPL panel lights' own WCB_Client device id
