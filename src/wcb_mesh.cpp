@@ -9,10 +9,15 @@
 
 static WCB_Client WCBMesh(WCB_MESH_OCT2, WCB_MESH_OCT3, WCB_MESH_PASSWORD,
                            WCB_MESH_QUANTITY, WCB_MESH_DEVICE_ID);
-static WCBHcrTransport HCRMeshTransport(&WCBMesh);
+static WCBHcrTransport HCRMeshTransport;
 static bool meshReady = false;
 
 void beginWCBMesh() {
+  // Installed before begin() so it's in place even if the mesh never comes up:
+  // the transport falls back to a wrapped UART0 write itself, since the
+  // library's own bare-frame fallback is dropped by a native-HCR WCB.
+  HCR.setExternalTransport(&HCRMeshTransport);
+
   // Body Controller's OTA SoftAP (see startOTAWebServer(), called before
   // this in setup()) is brought up on WiFi's default AP channel (1) and
   // must be preserved for firmware updates -- WCB_Client detects a live
@@ -26,11 +31,15 @@ void beginWCBMesh() {
     return;
   }
   meshReady = true;
-  HCR.setExternalTransport(&HCRMeshTransport);
 }
 
 void updateWCBMesh() {
   if (meshReady) WCBMesh.update();
+}
+
+bool sendHcrViaMesh(const char *line) {
+  if (!meshReady || !WCBMesh.isOnline(WCB_HCR_TARGET_WCB)) return false;
+  return WCBMesh.send(WCB_HCR_TARGET_WCB, line);
 }
 
 bool sendPanelCommandViaMesh(const char *cmd) {

@@ -3,8 +3,9 @@
 
 #include <Arduino.h>
 
-// UART0, shared trunk for WCB commands in, HCR vocalizer commands out (when
-// the WCB mesh unicast isn't available, see wcb_hcr_transport.h), and
+// UART0, shared trunk for WCB commands in, HCR vocalizer commands out (as
+// ";H,RAW,<frame>", only when the WCB mesh unicast isn't available, see
+// wcb_hcr_transport.h), and
 // periscope commands out (see sendBusCommand()). RGB-DPL panel commands
 // (see sendPanelLightCommand()) prefer a direct WCB mesh unicast and only
 // fall back to this trunk if that's unreachable.
